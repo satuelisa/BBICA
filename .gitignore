@@ -1,4 +1,9 @@
-# Byte-compiled / optimized / DLL files
+# emacs
+*~ 
+# jsons
+*.json
+# images
+*.png
 __pycache__/
 *.py[cod]
 *$py.class
