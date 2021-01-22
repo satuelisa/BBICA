@@ -17,9 +17,9 @@ for v in G:
     if len(v) == 2:
         (r, c) = v
     else:
-        fields = v[1:-1].split(',')
-        r = int(fields.pop(0))
-        c = int(fields.pop(0))
+        fields = v[1:-1].split('_')
+        r = float(fields[2])
+        c = float(fields[3])
     labels[v] = f'({r}, {c})'
 nx.draw_networkx_labels(G, pos, labels, font_size = 4)
 plt.axis("off")

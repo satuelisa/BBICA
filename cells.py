@@ -13,8 +13,18 @@ import matplotlib
 import os.path
 import os
 
-verbose = False
-SAVE_ALL = False # save thousands of images of individual cells
+datasets = ['aug27b', 'jul25b']
+bbox = ((-99.90024722222223, -99.89772500000001), (24.20827222222222, 24.21)) # lon, lat (bb.py from BarkBeetle)
+
+### ADJUSTABLE PARAMETERS ###
+goal = 100 # how many cells in terms of latitude 
+overlap = 0.0001 # how close do frame-level cell centers have to be to merge them (in dec lat/lon)
+#############################
+
+verbose = False # print additional debug info
+SAVE_ALL = True # save thousands of images of individual cells
+INDIVIDUAL = True # save graphs of individual frames
+histos = False # output altitude and angle data to stdout
 
 from pylab import rcParams
 rcParams['figure.figsize'] = 12, 8
@@ -83,8 +93,8 @@ def metadata(frame):
     xmp = file_to_dict(frame)
     info = dict()
     for category in xmp:
-        group = xmp[category]
-        for data in group:
+        gr = xmp[category]
+        for data in gr:
             info[data[0]] = data[1:]
     return info
 
@@ -175,11 +185,6 @@ def combine(pixels, channel = None):
         return np.mean([p[channel] for p in nontransparent])
     return np.mean([np.mean(p) for p in pixels]) # grayscale from RGB (ignore A)
 
-datasets = ['aug27b', 'jul25b']
-
-histos = False # output altitude and angle data to stdout
-bbox = ((-99.90024722222223, -99.89772500000001), (24.20827222222222, 24.21)) # lon, lat (bb.py from BarkBeetle)
-goal = 50 # how many cells in terms of latitude ADJUSTABLE PARAMETER
 latSpan = bbox[1][1] - bbox[1][0]
 lonSpan = bbox[0][1] - bbox[0][0]
 step = latSpan / goal
@@ -215,7 +220,7 @@ def grid(kind):
                 up = ((yp % 2) or (xp % 2)) and (not (yp % 2) or not (xp % 2))
                 up = xp % 2
                 if up:
-                    N.append((yp - 1, xp))
+                    N[(yp, xp)].append((yp - 1, xp))
                 yc = y + hh - sixth * (2 * up - 1)
             elif kind == 3: # hexagon
                 N[(yp, xp)].append((yp - 1, xp + 1))
@@ -251,34 +256,34 @@ def cell(xc, yc, kind, up = True):
     unit = step(kind)
     sh = unit / 2
     height = sqrt(3) * sh
-    path = []
+    sequence = []
     if kind == 1: # square cell
-        path.append((xc - sh, yc - sh))
-        path.append((xc + sh, yc - sh))
-        path.append((xc + sh, yc + sh))
-        path.append((xc - sh, yc + sh))        
+        sequence.append((xc - sh, yc - sh))
+        sequence.append((xc + sh, yc - sh))
+        sequence.append((xc + sh, yc + sh))
+        sequence.append((xc - sh, yc + sh))        
     elif kind == 2: # triangle cell
         hs = height / 3
         if up:
             yt = yc + 2 * hs 
             yb = yc - hs 
-            path.append((xc - sh, yb))
-            path.append((xc, yt))
-            path.append((xc + sh, yb))
+            sequence.append((xc - sh, yb))
+            sequence.append((xc, yt))
+            sequence.append((xc + sh, yb))
         else:
             yt = yc + hs
             yb = yc - 2 * hs        
-            path.append((xc - sh, yt))
-            path.append((xc, yb))
-            path.append((xc + sh, yt))        
+            sequence.append((xc - sh, yt))
+            sequence.append((xc, yb))
+            sequence.append((xc + sh, yt))        
     elif kind == 3: # hexagonal cell
-        path.append((xc - sh, yc + height))
-        path.append((xc + sh, yc + height))
-        path.append((xc + unit, yc))        
-        path.append((xc + sh, yc - height))
-        path.append((xc - sh, yc - height))
-        path.append((xc - unit, yc))
-    return path
+        sequence.append((xc - sh, yc + height))
+        sequence.append((xc + sh, yc + height))
+        sequence.append((xc + unit, yc))        
+        sequence.append((xc + sh, yc - height))
+        sequence.append((xc - sh, yc - height))
+        sequence.append((xc - unit, yc))
+    return sequence
 
 # https://stackoverflow.com/questions/34372480/rotate-point-about-another-point-in-degrees-python
 def rotate(origin, point, angle):
@@ -365,67 +370,6 @@ for dataset in datasets:
     assert len(pos) >= 30 # at least thirty meaningful frames 
     x = [c[0] for c in pos] 
     y = [c[1] for c in pos]
-    seq = 0
-    for kind in [1, 2, 3]:
-        print(f'Extracting type {kind} cells for {dataset}')        
-        positions, neighborhoods = grid(kind)
-        cx = [v[0] for v in positions.values()]
-        cy = [v[1] for v in positions.values()]
-        values = dict()
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_xlim(bbox[0])
-        ax.set_ylim(bbox[1])
-        ax.set_xlabel('Longitude')
-        ax.set_ylabel('Latitude')
-        ax.scatter(x, y, marker = 'o', color = 'black')
-        ax.scatter(cx, cy, marker = 'o', color = 'red', alpha = 0.3)
-        ax.set_xlim(bbox[0])
-        ax.set_ylim(bbox[1])
-        ax.set_xlabel('Longitude')
-        ax.set_ylabel('Latitude')
-        cells = dict()
-        for c in positions:
-            (xc, yc, up) = positions[c]
-            path = cell(xc, yc, kind, up)
-            cells[c] = path
-            polygon = patches.Polygon(path, edgecolor = 'green', facecolor = 'none', alpha = 0.7, lw = 1)        
-            ax.add_patch(polygon)
-        print('Polygons computed')
-        td = ax.transData # https://stackoverflow.com/questions/4285103/matplotlib-rotating-a-patch
-        for filename in rect:
-            Gf = nx.Graph()
-            wm, hm, lonC, latC, a = rect[filename]
-            r = rectangle(wm, hm, lonC, latC)
-            (xc, yc) = centers[filename]
-            rotation = matplotlib.transforms.Affine2D().rotate_deg_around(xc, yc, a - 90) + td # west is zero, north is no rotation
-            r.set_transform(rotation)
-            ax.add_patch(r)
-            for c in cells:
-                (row, column) = c
-                (xc, yc, up) = positions[c]
-                path = cells[c]
-                coords = pos2pixel(path, lonC, latC, wm, hm, a, 'RGB' if 'RGB' in filename else 'NIR')
-                if coords is not None: # whole cell
-                    contents = crop(directory + filename, coords)
-                    if SAVE_ALL:
-                        contents.save(f'extracted_{seq}.png')
-                        seq += 1
-                    d = np.asarray(contents) # pixels
-                    v = (combine(d, 0), # R
-                         combine(d, 1), # G 
-                         combine(d, 2)) # B
-                    Gf.add_node((row, column), pos = (xc, yc), color = v, value = v)                    
-                    values[c] = v
-            for c in neighborhoods:
-                for nc in neighborhoods[c]:
-                    if Gf.has_node(c) and Gf.has_node(nc) and not Gf.has_edge(c, nc):
-                        Gf.add_edge(c, nc)
-            store(Gf, f'{dataset}_{filename}_cells_{kind}.json')
-            print(f'Graph exported for {filename} of {dataset}')                            
-        ax.ticklabel_format(useOffset=False)
-        plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 150)
-        plt.clf()
     cells = Voronoi(pos)
     fig = voronoi_plot_2d(cells, show_vertices = False, line_colors = 'blue',
                           line_width = 2, line_alpha = 0.5, point_size = 3)
@@ -438,7 +382,6 @@ for dataset in datasets:
     cl = []
     rl = []
     n = len(cells.points)
-    frames = dict()
     areas = dict()
     for i in range(n):
         for filename in centers:
@@ -462,6 +405,7 @@ for dataset in datasets:
     expected = np.median(data)
     variation = 2 * expected
     G = nx.Graph()
+    Gg = nx.Graph()
     merged = dict()
     for i in range(n):
         if i in areas:
@@ -470,36 +414,109 @@ for dataset in datasets:
                 (x, y) = cells.points[i]
                 label = frames[i]
                 merged[label] = merge(frames[label])
-                G.add_node(label, pos = (x, y), value = merged[label])
+                Gg.add_node(label, pos = (x, y), value = merged[label])
     for i in range(n):
-        if G.has_node(frames[i]):
+        if Gg.has_node(frames[i]):
             iC = cells.regions[cells.point_region[i]]
             assert -1 not in iC
             for j in range(i + 1, n):
-                if G.has_node(frames[j]):                    
+                if Gg.has_node(frames[j]):                    
                     jC = cells.regions[cells.point_region[j]]
                     assert -1 not in jC                        
                     shared = set(iC) & set(jC)
                     k = len(shared)
                     if k == 2: # a shared border 
-                        G.add_edge(frames[i], frames[j])
+                        Gg.add_edge(frames[i], frames[j])
                     elif k > 2: # overlapping
-                        G = nx.contracted_nodes(G, frames[i], frames[j])
-                        G.nodes[frames[i]]['value'] = average(merged[frames[i]], merged[frames[j]]) 
-    store(G, f'{dataset}.json')
-    G = load(f'{dataset}.json')    
-    pos = nx.get_node_attributes(G, 'pos')
-    value = nx.get_node_attributes(G, 'value')
+                        Gg = nx.contracted_nodes(G, frames[i], frames[j])
+                        Gg.nodes[frames[i]]['value'] = average(merged[frames[i]], merged[frames[j]]) 
+    store(Gg, f'{dataset}.json')
+    Gg = load(f'{dataset}.json')    
+    pos = nx.get_node_attributes(Gg, 'pos')
+    value = nx.get_node_attributes(Gg, 'value')
     norm = matplotlib.colors.Normalize(vmin = 0.0, vmax = 3.0) # https://stackoverflow.com/questions/28752727/map-values-to-colors-in-matplotlib
     mapper = plt.cm.ScalarMappable(norm = norm, cmap = plt.cm.RdYlGn) # https://www.neonscience.org/calc-ndvi-tiles-py
     color = []
-    for v in G:
+    for v in Gg:
         color.append(mapper.to_rgba(np.mean(value[v]))) # use the average when multiple channels
-    nx.draw_networkx_nodes(G, pos, node_size = 12, node_shape='o', node_color = color, cmap = plt.cm.RdYlGn, linewidths = None, edgecolors = 'black') 
-    nx.draw_networkx_edges(G, pos, width = 1, edge_color = 'black')
+    nx.draw_networkx_nodes(Gg, pos, node_size = 12, node_shape='o', node_color = color, cmap = plt.cm.RdYlGn, linewidths = None, edgecolors = 'black') 
+    nx.draw_networkx_edges(Gg, pos, width = 1, edge_color = 'black')
     plt.axis("off")
     plt.xlim(bbox[0])
     plt.ylim(bbox[1])
     plt.savefig(f'{dataset}_graph.png', bbox_inches = "tight", dpi = 150)
     plt.clf()
+    for kind in [1, 2, 3]:
+        print(f'Extracting type {kind} cells for {dataset}')        
+        positions, neighborhoods = grid(kind)
+        cx = [v[0] for v in positions.values()]
+        cy = [v[1] for v in positions.values()]
+        values = dict()
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_xlim(bbox[0])
+        ax.set_ylim(bbox[1])
+        ax.set_xlabel('Longitude')
+        ax.set_ylabel('Latitude')
+        ax.scatter(x, y, marker = 'o', color = 'black')
+        ax.scatter(cx, cy, marker = 'o', color = 'red', alpha = 0.3)
+        ax.set_xlim(bbox[0])
+        ax.set_ylim(bbox[1])
+        ax.set_xlabel('Longitude')
+        ax.set_ylabel('Latitude')
+        zones = dict()
+        for c in positions:
+            (xc, yc, up) = positions[c]
+            p = cell(xc, yc, kind, up)
+            zones[c] = p
+            polygon = patches.Polygon(p, edgecolor = 'green', facecolor = 'none', alpha = 0.7, lw = 1)        
+            ax.add_patch(polygon)
+        print(f'Polygons of kind {kind} computed for {dataset}')
+        td = ax.transData # https://stackoverflow.com/questions/4285103/matplotlib-rotating-a-patch
+        for filename in rect:
+            if INDIVIDUAL:
+                target = f'{dataset}_{filename}_cells_{kind}.json'
+                if path.exists(target):
+                    print(f'A graph of type {kind} for {filename} of {dataset} already exists')
+                    continue # no need to reprocess (delete this for a full wipe)
+            Gf = nx.Graph()
+            wm, hm, lonC, latC, a = rect[filename]
+            r = rectangle(wm, hm, lonC, latC)
+            (xf, yf) = centers[filename]
+            rotation = matplotlib.transforms.Affine2D().rotate_deg_around(xf, yf, a - 90) + td # west is zero, north is no rotation
+            r.set_transform(rotation)
+            ax.add_patch(r)
+            for c in positions:
+                (row, column) = c
+                path = zones[c]
+                coords = pos2pixel(path, lonC, latC, wm, hm, a, 'RGB' if 'RGB' in filename else 'NIR')
+                if coords is not None: # whole cell
+                    contents = crop(directory + filename, coords)
+                    if SAVE_ALL:
+                        contents.save(f'{dataset}_{filename}_{kind}_{row}_{column}.png')
+                    d = np.asarray(contents) # pixels
+                    v = (combine(d, 0), # R
+                         combine(d, 1), # G 
+                         combine(d, 2)) # B
+                    (xc, yc, up) = positions[c]
+                    if INDIVIDUAL:
+                        Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v, value = v)
+                    G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v, value = v)                    
+                    values[c] = v
+            for c in neighborhoods:
+                (r1, c1) = c
+                n1 = f'{dataset}_{filename}_{kind}_{r1}_{c1}'
+                for nc in neighborhoods[c]:
+                    (r2, c2) = nc                    
+                    n2 = f'{dataset}_{filename}_{kind}_{r2}_{c2}'                    
+                    if G.has_node(n1) and G.has_node(n2) and not G.has_edge(n1, n2):
+                        G.add_edge(n1, n2)                        
+                        if INDIVIDUAL:
+                            Gf.add_edge(n1, n2)
+            if INDIVIDUAL:
+                store(Gf, target)
+                print(f'Graph exported for {filename} of {dataset}')
+        ax.ticklabel_format(useOffset=False)
+        plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 150)
+        plt.clf()
 
