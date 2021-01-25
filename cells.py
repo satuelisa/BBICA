@@ -18,11 +18,11 @@ bbox = ((-99.90024722222223, -99.89772500000001), (24.20827222222222, 24.21)) # 
 
 ### ADJUSTABLE PARAMETERS ###
 goal = 100 # how many cells in terms of latitude 
-overlap = 0.0001 # how close do frame-level cell centers have to be to merge them (in dec lat/lon)
 #############################
 
+overwrite = True # overwrite all output
 verbose = False # print additional debug info
-SAVE_ALL = True # save thousands of images of individual cells
+SAVE_ALL = True # save (tons of) images of individual cells
 INDIVIDUAL = True # save graphs of individual frames
 histos = False # output altitude and angle data to stdout
 
@@ -208,7 +208,7 @@ def grid(kind):
     centers = defaultdict()
     up = False
     while y < bbox[1][1]:
-        xp = yp % 2
+        xp = 0 if kind == 1 else yp % 2 # no alternating initial displacement for squares
         x = bbox[0][0]
         while x < bbox[0][1]:
             xc = x + half
@@ -217,10 +217,9 @@ def grid(kind):
                 yc = y + half
             elif kind == 2: # triangle
                 N[(yp, xp)] = [(yp, xp - 1), (yp, xp + 1)]
-                up = ((yp % 2) or (xp % 2)) and (not (yp % 2) or not (xp % 2))
-                up = xp % 2
-                if up:
+                if xp % 2:
                     N[(yp, xp)].append((yp - 1, xp))
+                up = ((yp % 2) or (xp % 2)) and (not (yp % 2) or not (xp % 2))                    
                 yc = y + hh - sixth * (2 * up - 1)
             elif kind == 3: # hexagon
                 N[(yp, xp)].append((yp - 1, xp + 1))
@@ -239,10 +238,10 @@ def grid(kind):
             else:
                 print('Unknown grid type, exiting')
                 quit()
-            x += dx
+            centers[(yp, xp)] = (xc, yc, up) # store center
+            x += dx # proceed horizontally
             xp += 1
-            centers[(yp, xp)] = (xc, yc, up) 
-        y += dy
+        y += dy # proceed verticallyX
         yp += 1
     return centers, N
 
@@ -476,7 +475,7 @@ for dataset in datasets:
         for filename in rect:
             if INDIVIDUAL:
                 target = f'{dataset}_{filename}_cells_{kind}.json'
-                if path.exists(target):
+                if not overwrite and path.exists(target):
                     print(f'A graph of type {kind} for {filename} of {dataset} already exists')
                     continue # no need to reprocess (delete this for a full wipe)
             Gf = nx.Graph()
@@ -488,8 +487,8 @@ for dataset in datasets:
             ax.add_patch(r)
             for c in positions:
                 (row, column) = c
-                path = zones[c]
-                coords = pos2pixel(path, lonC, latC, wm, hm, a, 'RGB' if 'RGB' in filename else 'NIR')
+                p = zones[c]
+                coords = pos2pixel(p, lonC, latC, wm, hm, a, 'RGB' if 'RGB' in filename else 'NIR')
                 if coords is not None: # whole cell
                     contents = crop(directory + filename, coords)
                     if SAVE_ALL:
