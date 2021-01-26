@@ -20,7 +20,7 @@ bbox = ((-99.90024722222223, -99.89772500000001), (24.20827222222222, 24.21)) # 
 goal = 100 # how many cells in terms of latitude 
 #############################
 
-overwrite = True # overwrite all output
+overwrite = False # overwrite all output
 verbose = False # print additional debug info
 SAVE_ALL = True # save (tons of) images of individual cells
 INDIVIDUAL = True # save graphs of individual frames
@@ -208,7 +208,7 @@ def grid(kind):
     centers = defaultdict()
     up = False
     while y < bbox[1][1]:
-        xp = 0 if kind == 1 else yp % 2 # no alternating initial displacement for squares
+        xp = 0 if kind < 3 else yp % 2 # no alternating initial displacement for squares
         x = bbox[0][0]
         while x < bbox[0][1]:
             xc = x + half
@@ -217,9 +217,9 @@ def grid(kind):
                 yc = y + half
             elif kind == 2: # triangle
                 N[(yp, xp)] = [(yp, xp - 1), (yp, xp + 1)]
-                if xp % 2:
-                    N[(yp, xp)].append((yp - 1, xp))
-                up = ((yp % 2) or (xp % 2)) and (not (yp % 2) or not (xp % 2))                    
+                up = ((yp % 2) or (xp % 2)) and (not (yp % 2) or not (xp % 2))
+                if up:
+                    N[(yp, xp)].append((yp - 1, xp))                
                 yc = y + hh - sixth * (2 * up - 1)
             elif kind == 3: # hexagon
                 N[(yp, xp)].append((yp - 1, xp + 1))
