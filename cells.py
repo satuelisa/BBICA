@@ -222,17 +222,16 @@ def grid(kind):
                     N[(yp, xp)].append((yp - 1, xp))                
                 yc = y + hh - sixth * (2 * up - 1)
             elif kind == 3: # hexagon
+                N[(yp, xp)].append((yp - 1, xp - 1))
                 N[(yp, xp)].append((yp - 1, xp + 1))
                 N[(yp, xp)].append((yp + 1, xp - 1))
-                N[(yp, xp)].append((yp - 2, xp))
-                if yp % 2:
-                    N[(yp, xp)].append((yp + 1, xp))
-                    N[(yp, xp)].append((yp - 1, xp - 2))
-                    N[(yp, xp)].append((yp + 3, xp))
+                N[(yp, xp)].append((yp + 1, xp + 1))                    
+                N[(yp, xp)].append((yp, xp - 1))                
+                N[(yp, xp)].append((yp, xp + 1))
+                if xp % 2 == 0: 
+                    N[(yp, xp)].append((yp - 1, xp + 2))
                 else:
-                    N[(yp, xp)].append((yp - 3, xp + 1))
-                    N[(yp, xp)].append((yp - 1, xp))
-                    N[(yp, xp)].append((yp + 1, xp + 2))
+                    N[(yp, xp)].append((yp - 1, xp - 2))
                 yr = y + half
                 yc = yr if (xp - (yp % 2)) % 2 == 0 else yr + h
             else:
@@ -241,7 +240,7 @@ def grid(kind):
             centers[(yp, xp)] = (xc, yc, up) # store center
             x += dx # proceed horizontally
             xp += 1
-        y += dy # proceed verticallyX
+        y += dy # proceed vertically
         yp += 1
     return centers, N
 
@@ -508,7 +507,7 @@ for dataset in datasets:
                 for nc in neighborhoods[c]:
                     (r2, c2) = nc                    
                     n2 = f'{dataset}_{filename}_{kind}_{r2}_{c2}'                    
-                    if G.has_node(n1) and G.has_node(n2) and not G.has_edge(n1, n2):
+                    if G.has_node(n1) and G.has_node(n2) and not G.has_edge(n1, n2) and not G.has_edge(n2, n1): # undirected
                         G.add_edge(n1, n2)                        
                         if INDIVIDUAL:
                             Gf.add_edge(n1, n2)
