@@ -426,7 +426,7 @@ for dataset in datasets:
                     if k == 2: # a shared border 
                         Gg.add_edge(frames[i], frames[j])
                     elif k > 2: # overlapping
-                        Gg = nx.contracted_nodes(G, frames[i], frames[j])
+                        Gg = nx.contracted_nodes(Gg, frames[i], frames[j])
                         Gg.nodes[frames[i]]['value'] = average(merged[frames[i]], merged[frames[j]]) 
     store(Gg, f'{dataset}.json')
     Gg = load(f'{dataset}.json')    
