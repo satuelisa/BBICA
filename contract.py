@@ -1,11 +1,20 @@
 from dumps import store, load
+from math import sqrt, fabs
+from matplotlib import path
 import simplejson as json
 import networkx as nx
 import os
 
-threshold = 0.0001 # how close do frame-level cell centers have to be to merge them (in dec lat/lon)
-contract = False # whether to merge near-by cells from different frames
-for dataset in ['aug27b', 'jul25b']:
+from local import datasets, zone, average
+
+validate = False # check if matching (row, col) correspond to the same coordinates
+epsilon = 0.000001 
+contract = True # whether to merge same-position cells from different frames
+prune = True # whether to limit to the zone of interest
+permitted = None
+if prune:
+    permitted = path.Path(zone)    
+for dataset in datasets:
     print(f'Processing {dataset}...')
     for kind in [1, 2, 3]:
         print(f'Creating a global graph of kind {kind}...')        
@@ -16,31 +25,44 @@ for dataset in ['aug27b', 'jul25b']:
                 pos = nx.get_node_attributes(Gg, 'pos')
                 vals = nx.get_node_attributes(Gg, 'value')
                 for node in Gg.nodes():
-                    G.add_node(node, pos = pos[node], value = vals[node])
+                    (px, py) = pos[node]
+                    if not prune or  permitted.contains_points([(px, py)]): # not in the zone of interest                    
+                        G.add_node(node, pos = pos[node], value = vals[node])
                 for n1, n2 in Gg.edges():
-                    G.add_edge(n1, n2)
+                    if not prune or (G.has_node(n1) and G.has_node(n2)):
+                        G.add_edge(n1, n2)
         if contract:
-            print(f'Contracting with threshold {threshold} (this takes a long time)...')
+            pos = nx.get_node_attributes(G, 'pos')
+            vals = nx.get_node_attributes(G, 'value')            
+            print(f'Contracting (this takes a long time)...')
             original = [n for n in G.nodes()]
-            if G.has_node(n1): # not yet contracted
-                (x1, y1) = pos[n1]
-                f1 = n1.split('_')[1] # name of frame
-                for n2 in original:                        
-                    if G.has_node(n2): # not yet contracted
-                        if n1 != n2:
-                            f2 = n2.split('_')[1]
+            for n1 in original:
+                if G.has_node(n1): # not yet contracted
+                    (x1, y1) = pos[n1]
+                    d1 = n1.split('_')
+                    f1 = ' '.join(d1[2:5]) # frame ID                    
+                    r1 = d1[-2]
+                    c1 = d1[-1]
+                    for n2 in original:
+                        if n1 != n2: # not the same node
+                            d2 = n2.split('_')
+                            f2 = ' '.join(d2[2:5]) # frame ID
                             if f1 != f2: # from different frames
-                                (x2, y2) = pos[n2]
-                                dx = x1 - x2
-                                dy = y1 - y2
-                                d = sqrt(dx**2 + dy**2) 
-                                if d < threshold:
-                                    G = nx.contracted_nodes(G, n1, n2)
-                                    print(f'Contracted {n1} with {n2} (distance {d})')
-                                    v = average(vals[n1], vals[n2])                                    
-                                    G.nodes[n1]['value'] = v
-                                    p = average(pos[n1], pos[n2]) 
-                                    G.nodes[n1]['pos'] = p
+                                if G.has_node(n2): # not yet contracted
+                                    r2 = d2[-2]
+                                    c2 = d2[-1]
+                                    if r1 == r2 and c1 == c2:
+                                        (x2, y2) = pos[n2]
+                                        if validate:
+                                            dx = x1 - x2
+                                            dy = y1 - y2
+                                            d = sqrt(dx**2 + dy**2)
+                                            assert fabs(d) < epsilon # ensure similar coordinates
+                                        G = nx.contracted_nodes(G, n1, n2)
+                                        print(f'Contracted {n1} with {n2}')
+                                        v = average(vals[n1], vals[n2])                                    
+                                        G.nodes[n1]['value'] = v
+                                        p = average(pos[n1], pos[n2]) 
+                                        G.nodes[n1]['pos'] = p
         print(f'Storing a global graph of kind {kind}...')                                            
         store(G, f'{dataset}_global_{kind}.json')
-

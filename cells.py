@@ -13,18 +13,18 @@ import matplotlib
 import os.path
 import os
 
-datasets = ['aug27b', 'jul25b']
-bbox = ((-99.90024722222223, -99.89772500000001), (24.20827222222222, 24.21)) # lon, lat (bb.py from BarkBeetle)
+from local import datasets, bbox, zone, average
 
 ### ADJUSTABLE PARAMETERS ###
 goal = 100 # how many cells in terms of latitude 
-#############################
 
+### output control flags
 overwrite = False # overwrite all output
 verbose = False # print additional debug info
-SAVE_ALL = True # save (tons of) images of individual cells
-INDIVIDUAL = True # save graphs of individual frames
+SAVE_ALL = False # save (tons of) images of individual cells
+INDIVIDUAL = False # save graphs of individual frames
 histos = False # output altitude and angle data to stdout
+overview = True # no cell-level computations
 
 from pylab import rcParams
 rcParams['figure.figsize'] = 12, 8
@@ -161,13 +161,6 @@ def extract(frame, decimal = True):
     Red = np.asarray(Image.open(redfile)).flatten()
     data = (NIR, Red)
     return lonC, latC, wm, hm, yaw, data
-
-def average(d1, d2):
-    means = []
-    assert len(d1) == len(d2)
-    for (v1, v2) in zip(d1, d2):
-        means.append((v1 + v2) / 2)
-    return means
 
 def merge(sources, loc = None):
     means = []
@@ -369,14 +362,18 @@ for dataset in datasets:
     x = [c[0] for c in pos] 
     y = [c[1] for c in pos]
     cells = Voronoi(pos)
-    fig = voronoi_plot_2d(cells, show_vertices = False, line_colors = 'blue',
+    fig, ax = plt.subplots()
+    voronoi_plot_2d(cells, ax = ax, show_vertices = False, line_colors = 'blue',
                           line_width = 2, line_alpha = 0.5, point_size = 3)
     plt.xlim(bbox[0])
     plt.ylim(bbox[1])
+    square = patches.Polygon(np.array(zone), edgecolor = 'green', facecolor = 'none', alpha = 0.7, lw = 3) 
+    ax.add_patch(square)
     plt.xlabel('Longitude')
-    plt.ylabel('Latitude')    
+    plt.ylabel('Latitude')
     plt.savefig(dataset + '_voronoi.png')
     plt.clf()
+    print('Voronoi cells drawn.')
     cl = []
     rl = []
     n = len(cells.points)
@@ -444,6 +441,9 @@ for dataset in datasets:
     plt.ylim(bbox[1])
     plt.savefig(f'{dataset}_graph.png', bbox_inches = "tight", dpi = 150)
     plt.clf()
+    if overview:
+        print('Cell-level computations suppressed')
+        continue
     for kind in [1, 2, 3]:
         print(f'Extracting type {kind} cells for {dataset}')        
         positions, neighborhoods = grid(kind)
