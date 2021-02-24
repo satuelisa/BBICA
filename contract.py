@@ -36,33 +36,34 @@ for dataset in datasets:
             vals = nx.get_node_attributes(G, 'value')            
             print(f'Contracting (this takes a long time)...')
             original = [n for n in G.nodes()]
-            for n1 in original:
-                if G.has_node(n1): # not yet contracted
-                    (x1, y1) = pos[n1]
-                    d1 = n1.split('_')
-                    f1 = ' '.join(d1[2:5]) # frame ID                    
-                    r1 = d1[-2]
-                    c1 = d1[-1]
-                    for n2 in original:
-                        if n1 != n2: # not the same node
-                            d2 = n2.split('_')
-                            f2 = ' '.join(d2[2:5]) # frame ID
-                            if f1 != f2: # from different frames
-                                if G.has_node(n2): # not yet contracted
-                                    r2 = d2[-2]
-                                    c2 = d2[-1]
-                                    if r1 == r2 and c1 == c2:
-                                        (x2, y2) = pos[n2]
-                                        if validate:
-                                            dx = x1 - x2
-                                            dy = y1 - y2
-                                            d = sqrt(dx**2 + dy**2)
-                                            assert fabs(d) < epsilon # ensure similar coordinates
-                                        G = nx.contracted_nodes(G, n1, n2)
-                                        print(f'Contracted {n1} with {n2}')
-                                        v = average(vals[n1], vals[n2])                                    
-                                        G.nodes[n1]['value'] = v
-                                        p = average(pos[n1], pos[n2]) 
-                                        G.nodes[n1]['pos'] = p
-        print(f'Storing a global graph of kind {kind}...')                                            
-        store(G, f'{dataset}_global_{kind}.json')
+            with open(f'log_{dataset}_{kind}.txt') as target:
+                for n1 in original:
+                    if G.has_node(n1): # not yet contracted
+                        (x1, y1) = pos[n1]
+                        d1 = n1.split('_')
+                        f1 = ' '.join(d1[2:5]) # frame ID                    
+                        r1 = d1[-2]
+                        c1 = d1[-1]
+                        for n2 in original:
+                            if n1 != n2: # not the same node
+                                d2 = n2.split('_')
+                                f2 = ' '.join(d2[2:5]) # frame ID
+                                if f1 != f2: # from different frames
+                                    if G.has_node(n2): # not yet contracted
+                                        r2 = d2[-2]
+                                        c2 = d2[-1]
+                                        if r1 == r2 and c1 == c2:
+                                            (x2, y2) = pos[n2]
+                                            if validate:
+                                                dx = x1 - x2
+                                                dy = y1 - y2
+                                                d = sqrt(dx**2 + dy**2)
+                                                assert fabs(d) < epsilon # ensure similar coordinates
+                                            G = nx.contracted_nodes(G, n1, n2)
+                                            print(f'Contracted {n1} with {n2}', file = target)
+                                            v = average(vals[n1], vals[n2])                                    
+                                            G.nodes[n1]['value'] = v
+                                            p = average(pos[n1], pos[n2]) 
+                                            G.nodes[n1]['pos'] = p
+            print(f'Storing a global graph of kind {kind}...')                                            
+            store(G, f'{dataset}_global_{kind}.json')
