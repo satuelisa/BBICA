@@ -36,7 +36,7 @@ for dataset in datasets:
             vals = nx.get_node_attributes(G, 'value')            
             print(f'Contracting (this takes a long time)...')
             original = [n for n in G.nodes()]
-            with open(f'log_{dataset}_{kind}.txt') as target:
+            with open(f'log_{dataset}_{kind}.txt', 'w') as target:
                 for n1 in original:
                     if G.has_node(n1): # not yet contracted
                         (x1, y1) = pos[n1]

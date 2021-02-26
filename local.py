@@ -1,4 +1,4 @@
-datasets = ['aug27b', 'jul25b']
+datasets = ['jul25b', 'aug27b']
 bbox = ((-99.90024722222223, -99.89772500000001),
         (24.20827222222222, 24.21)) # lon, lat (bb.py from BarkBeetle)
 zone = ((-99.9000, 24.2089),

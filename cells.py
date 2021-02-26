@@ -22,7 +22,7 @@ goal = 100 # how many cells in terms of latitude
 overwrite = False # overwrite all output
 verbose = False # print additional debug info
 SAVE_ALL = False # save (tons of) images of individual cells
-INDIVIDUAL = False # save graphs of individual frames
+INDIVIDUAL = False # save graphs of individual frames (needed for contract.py)
 histos = False # output altitude and angle data to stdout
 overview = True # no cell-level computations
 
