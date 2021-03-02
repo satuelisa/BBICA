@@ -5,7 +5,14 @@ import simplejson as json
 import networkx as nx
 import os
 
-from local import datasets, zone, average
+from local import datasets, zone
+
+def average(v1, v2):
+    assert len(v1) == len(v2)
+    m = []
+    for (x, y) in zip(v1, v2):
+        m.append((x + y) / 2)
+    return m
 
 validate = False # check if matching (row, col) correspond to the same coordinates
 epsilon = 0.000001 
