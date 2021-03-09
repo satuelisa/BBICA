@@ -1,4 +1,5 @@
-from scipy.spatial import Voronoi, voronoi_plot_2d # https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.Voronoi.html
+# https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.Voronoi.html
+from scipy.spatial import Voronoi, voronoi_plot_2d 
 from matplotlib.collections import LineCollection
 from collections import defaultdict
 from PIL import Image, ImageDraw
@@ -13,18 +14,19 @@ import matplotlib
 import os.path
 import os
 
-from local import datasets, bbox, zone, average
+from local import datasets, bbox, zone, channels
 
 ### ADJUSTABLE PARAMETERS ###
 goal = 100 # how many cells in terms of latitude 
+gray = 30 # discarding of grayish tones
 
 ### output control flags
-overwrite = False # overwrite all output
+overwrite = True # overwrite all output
 verbose = False # print additional debug info
 SAVE_ALL = False # save (tons of) images of individual cells
-INDIVIDUAL = False # save graphs of individual frames (needed for contract.py)
+INDIVIDUAL = True # save graphs of individual frames (needed for contract.py)
 histos = False # output altitude and angle data to stdout
-overview = True # no cell-level computations
+overview = False # no cell-level computations
 
 from pylab import rcParams
 rcParams['figure.figsize'] = 12, 8
@@ -33,6 +35,18 @@ def crop(filename, polygon):
     # https://stackoverflow.com/questions/22588074/polygon-crop-clip-using-python-pil
     original = Image.open(filename)
     (w, h) = original.size
+    if 'JPG' not in filename: # for the TIF images that are single-channel
+        rpl = filename.replace('TIF', 'png')
+        if not path.exists(rpl):
+            data = np.asarray(original).flatten(order = 'C') # data into 1D
+            data = np.round(np.interp(data, (data.min(), data.max()), (0, 255))) # normalize and discretize
+            gs  = Image.fromarray(data.reshape(h, w, order = 'C'))
+            rgb = gs.convert('RGB')
+            a = Image.new('L', (w, h), 255) # alpha channel (for masking)
+            rgb.putalpha(a)
+            # rgb.show()
+            rgb.save(rpl)
+        original = Image.open(rpl)
     mask = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(mask)
     draw.polygon(polygon, fill = (0, 0, 0, 255), outline = None)
@@ -42,14 +56,14 @@ def crop(filename, polygon):
     # https://stackoverflow.com/questions/14211340/automatically-cropping-an-image-with-python-pil
     image_data = np.asarray(joint)
     image_data_bw = image_data.max(axis = 2)
-    non_empty_columns = np.where(image_data_bw.max(axis = 0)>0)[0]
-    non_empty_rows = np.where(image_data_bw.max(axis = 1)>0)[0]
+    non_empty_columns = np.where(image_data_bw.max(axis = 0) > 0)[0]
+    non_empty_rows = np.where(image_data_bw.max(axis = 1) > 0)[0]
     cb = (min(non_empty_rows), max(non_empty_rows), min(non_empty_columns), max(non_empty_columns))
     data = image_data[cb[0] : (cb[1] + 1), cb[2] : (cb[3] + 1) , :]
     return Image.fromarray(data, "RGBA")
 
 # https://stackoverflow.com/questions/2049582/how-to-determine-if-a-point-is-in-a-2d-triangle 
-def sign (triangle):
+def sign(triangle):
     p1, p2, p3 = triangle
     return (p1[0] - p3[0]) * (p2[1] - p3[1]) - (p2[0] - p3[0]) * (p1[1] - p3[1])
 
@@ -118,10 +132,9 @@ import base64
 import struct
 modern = False #  images taken with an old firmware
 
-# sensor specs
-resolution = {'RGB': (4608, 3456),
-              'NIR': (1280, 960),
-              'RED': (1280, 960)}
+# sensor specs (True for RGB)
+resolution = {True: (4608, 3456), False: (1280, 960)}
+
 def extract(frame, decimal = True):
     filename = frame + '_RGB.JPG'
     info = metadata(filename)
@@ -133,10 +146,10 @@ def extract(frame, decimal = True):
     roll = float(info['Camera:Roll'][0])
     assert int(info['exif:FocalPlaneResolutionUnit'][0]) == 4 # mm
     w = int(info['exif:PixelXDimension'][0])
-    assert w == resolution['RGB'][0]
+    assert w == resolution[True][0]
     wm = w * frac(info['exif:FocalPlaneXResolution'][0]) / 100000 # image width in meters 
     h = int(info['exif:PixelYDimension'][0])
-    assert h == resolution['RGB'][1]    
+    assert h == resolution[True][1]    
     hm = h * frac(info['exif:FocalPlaneYResolution'][0]) / 100000 # image height in meters
     lat = info['exif:GPSLatitude'][0]
     lon = info['exif:GPSLongitude'][0]
@@ -155,28 +168,22 @@ def extract(frame, decimal = True):
                 assert h == int(value)
     latC = parse(lat, decimal)
     lonC = parse(lon, decimal)
-    filename = filename.replace('RGB.JPG', 'NIR.TIF')
-    redfile = filename.replace('NIR', 'RED')
-    NIR = np.asarray(Image.open(filename)).flatten() 
-    Red = np.asarray(Image.open(redfile)).flatten()
-    data = (NIR, Red)
-    return lonC, latC, wm, hm, yaw, data
+    return lonC, latC, wm, hm, yaw
 
-def merge(sources, loc = None):
-    means = []
-    for s in sources:
-        values = []
-        for v in range(len(s)):
-            if loc is None or v in loc:
-                values.append(s[v])
-        means.append(np.nanmean(values))
-    return means
-
-def combine(pixels, channel = None):
-    nontransparent = pixels[pixels[:, : ,3] == 255, : 3];
-    if channel is not None:
-        return np.mean([p[channel] for p in nontransparent])
-    return np.mean([np.mean(p) for p in pixels]) # grayscale from RGB (ignore A)
+def combine(frames, threshold):
+    pixels = np.asarray(contents['RGB'])
+    rv = list()
+    gv = list()
+    bv = list()
+    for r, g, b in pixels[pixels[:, : ,3] == 255, : 3]:
+        if max(r, g, b) - min(r, g, b) > threshold: # if not too gray
+            rv.append(r)
+            gv.append(g)
+            bv.append(b)
+    if len(rv) > 0:
+        data = [np.mean(rv), np.mean(gv), np.mean(bv)] + [np.mean(np.asarray(contents[ch])) for ch in channels]        
+        return [round(r) for r in data]
+    return [None] 
 
 latSpan = bbox[1][1] - bbox[1][0]
 lonSpan = bbox[0][1] - bbox[0][0]
@@ -297,7 +304,7 @@ def bounds(lonC, latC, xm, ym):
      x2, y2 = offset(lonC, latC, xh, yh)
      return x1, y1, x2, y2
      
-def pos2pixel(cell, lonC, latC, xm, ym, a, img = 'NIR'):
+def pos2pixel(cell, lonC, latC, xm, ym, a, rgb = True):
     x1, y1, x2, y2 = bounds(lonC, latC, xm, ym) # bbox lon / lat
     assert lonC > x1 and lonC < x2
     assert latC > y1 and latC < y2
@@ -314,9 +321,9 @@ def pos2pixel(cell, lonC, latC, xm, ym, a, img = 'NIR'):
     center = (xc, yc) # center in lon, lat
     for (x, y) in cell:
         xr, yr = rotate(center, (x, y), angle) # rotate the points around the center
-        xt = int(round(resolution[img][0] * (xr - x1) / sx)) # translate relative positions into pixels
-        yt = int(round(resolution[img][1] * (yr - y1) / sy))
-        if not (xt > 0 and xt < resolution[img][0] and yt > 0 and yt < resolution[img][1]):
+        xt = int(round(resolution[rgb][0] * (xr - x1) / sx)) # translate relative positions into pixels
+        yt = int(round(resolution[rgb][1] * (yr - y1) / sy))
+        if not (xt > 0 and xt < resolution[rgb][0] and yt > 0 and yt < resolution[rgb][1]):
             return None # incomplete
         translated.append((xt, yt))
     assert len(cell) == len(translated) 
@@ -338,17 +345,15 @@ for dataset in datasets:
         print('Unsupported operating system')
         quit()
     centers = dict()
-    rect = dict()
-    frames = dict()
+    frameRGB = dict()
     for filename in os.listdir(directory):
         if filename.endswith('_RGB.JPG'):
             if path.exists(directory + filename.replace('RGB.JPG', 'NIR.TIF')) \
                and path.exists(directory + filename.replace('RGB.JPG', 'RED.TIF')):
-                lonC, latC, wm, hm, yaw, d = extract(directory + filename[:-8])
+                lonC, latC, wm, hm, yaw = extract(directory + filename[:-8])
                 pos = (lonC, latC)
-                frames[filename] = d
                 (x, y) = pos 
-                rect[filename] = (wm, hm, lonC, latC,yaw)
+                frameRGB[filename] = (wm, hm, lonC, latC, yaw)
                 lonIn = x > bbox[0][0] and x < bbox[0][1]
                 latIn = y > bbox[1][0] and y < bbox[1][1]
                 if latIn and lonIn:
@@ -381,8 +386,7 @@ for dataset in datasets:
     for i in range(n):
         for filename in centers:
             if all(centers[filename] == cells.points[i]):
-                frames[i] = filename
-                break
+                break # duplicate
         r = cells.regions[cells.point_region[i]]
         if -1 not in r:
             polygon = []
@@ -401,40 +405,33 @@ for dataset in datasets:
     variation = 2 * expected
     G = nx.Graph()
     Gg = nx.Graph()
-    merged = dict()
     for i in range(n):
         if i in areas:
             a = areas[i]
             if a > expected - variation and a < expected + variation:
                 (x, y) = cells.points[i]
-                label = frames[i]
-                merged[label] = merge(frames[label])
-                Gg.add_node(label, pos = (x, y), value = merged[label])
+                Gg.add_node(i, pos = (x, y))
     for i in range(n):
-        if Gg.has_node(frames[i]):
+        if Gg.has_node(i):
             iC = cells.regions[cells.point_region[i]]
             assert -1 not in iC
             for j in range(i + 1, n):
-                if Gg.has_node(frames[j]):                    
+                if Gg.has_node(j):                    
                     jC = cells.regions[cells.point_region[j]]
                     assert -1 not in jC                        
                     shared = set(iC) & set(jC)
                     k = len(shared)
                     if k == 2: # a shared border 
-                        Gg.add_edge(frames[i], frames[j])
+                        Gg.add_edge(i, j)
                     elif k > 2: # overlapping
-                        Gg = nx.contracted_nodes(Gg, frames[i], frames[j])
-                        Gg.nodes[frames[i]]['value'] = average(merged[frames[i]], merged[frames[j]]) 
+                        Gg = nx.contracted_nodes(Gg, i, j)
     store(Gg, f'{dataset}.json')
     Gg = load(f'{dataset}.json')    
     pos = nx.get_node_attributes(Gg, 'pos')
-    value = nx.get_node_attributes(Gg, 'value')
-    norm = matplotlib.colors.Normalize(vmin = 0.0, vmax = 3.0) # https://stackoverflow.com/questions/28752727/map-values-to-colors-in-matplotlib
-    mapper = plt.cm.ScalarMappable(norm = norm, cmap = plt.cm.RdYlGn) # https://www.neonscience.org/calc-ndvi-tiles-py
-    color = []
-    for v in Gg:
-        color.append(mapper.to_rgba(np.mean(value[v]))) # use the average when multiple channels
-    nx.draw_networkx_nodes(Gg, pos, node_size = 12, node_shape='o', node_color = color, cmap = plt.cm.RdYlGn, linewidths = None, edgecolors = 'black') 
+#    norm = matplotlib.colors.Normalize(vmin = 0.0, vmax = 3.0) # https://stackoverflow.com/questions/28752727/map-values-to-colors-in-matplotlib
+#    mapper = plt.cm.ScalarMappable(norm = norm, cmap = plt.cm.RdYlGn) # https://www.neonscience.org/calc-ndvi-tiles-py
+#    nx.draw_networkx_nodes(Gg, pos, node_size = 12, node_shape='o', cmap = plt.cm.RdYlGn, linewidths = None, edgecolors = 'black')
+    nx.draw_networkx_nodes(Gg, pos, node_size = 12, node_shape='o', linewidths = None, edgecolors = 'black') 
     nx.draw_networkx_edges(Gg, pos, width = 1, edge_color = 'black')
     plt.axis("off")
     plt.xlim(bbox[0])
@@ -471,36 +468,42 @@ for dataset in datasets:
             ax.add_patch(polygon)
         print(f'Polygons of kind {kind} computed for {dataset}')
         td = ax.transData # https://stackoverflow.com/questions/4285103/matplotlib-rotating-a-patch
-        for filename in rect:
+        for filename in frameRGB:
             if INDIVIDUAL:
                 target = f'{dataset}_{filename}_cells_{kind}.json'
                 if not overwrite and path.exists(target):
                     print(f'A graph of type {kind} for {filename} of {dataset} already exists')
                     continue # no need to reprocess (delete this for a full wipe)
             Gf = nx.Graph()
-            wm, hm, lonC, latC, a = rect[filename]
+            wm, hm, lonC, latC, a = frameRGB[filename]
             r = rectangle(wm, hm, lonC, latC)
             (xf, yf) = centers[filename]
             rotation = matplotlib.transforms.Affine2D().rotate_deg_around(xf, yf, a - 90) + td # west is zero, north is no rotation
             r.set_transform(rotation)
             ax.add_patch(r)
+            skipped = 0
             for c in positions:
                 (row, column) = c
                 p = zones[c]
-                coords = pos2pixel(p, lonC, latC, wm, hm, a, 'RGB' if 'RGB' in filename else 'NIR')
-                if coords is not None: # whole cell
-                    contents = crop(directory + filename, coords)
+                coords = { True: pos2pixel(p, lonC, latC, wm, hm, a, True),
+                           False: pos2pixel(p, lonC, latC, wm, hm, a, False) }
+                if coords[True] is not None: # whole cell
+                    contents = { 'RGB': crop(directory + filename, coords[True]) }
+                    for ch in channels:
+                        contents[ch] = crop(directory + filename.replace('RGB.JPG', f'{ch}.TIF'), coords[False])
                     if SAVE_ALL:
-                        contents.save(f'{dataset}_{filename}_{kind}_{row}_{column}.png')
-                    d = np.asarray(contents) # pixels
-                    v = (combine(d, 0), # R
-                         combine(d, 1), # G 
-                         combine(d, 2)) # B
+                        for ch in contents:
+                            contents[ch].save(f'{dataset}_{filename[:-8]}_{ch}_{kind}_{row}_{column}.png')
+                    v = combine(contents, gray)
+                    if None in v:
+                        skipped += 1
+                        continue # skip an all-gray cell
                     (xc, yc, up) = positions[c]
                     if INDIVIDUAL:
                         Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v, value = v)
                     G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v, value = v)                    
                     values[c] = v
+            print(f'Skipped {skipped} gray cells')
             for c in neighborhoods:
                 (r1, c1) = c
                 n1 = f'{dataset}_{filename}_{kind}_{r1}_{c1}'
