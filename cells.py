@@ -441,6 +441,7 @@ for dataset in datasets:
     if overview:
         print('Cell-level computations suppressed')
         continue
+    log = open(f'log_{dataset}.txt', 'w')
     for kind in [1, 2, 3]:
         print(f'Extracting type {kind} cells for {dataset}')        
         positions, neighborhoods = grid(kind)
@@ -487,7 +488,7 @@ for dataset in datasets:
                 p = zones[c]
                 coords = { True: pos2pixel(p, lonC, latC, wm, hm, a, True),
                            False: pos2pixel(p, lonC, latC, wm, hm, a, False) }
-                if coords[True] is not None: # whole cell
+                if None not in coords.values(): # whole cell for all channels
                     contents = { 'RGB': crop(directory + filename, coords[True]) }
                     for ch in channels:
                         contents[ch] = crop(directory + filename.replace('RGB.JPG', f'{ch}.TIF'), coords[False])
@@ -503,7 +504,7 @@ for dataset in datasets:
                         Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v, value = v)
                     G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v, value = v)                    
                     values[c] = v
-            print(f'Skipped {skipped} gray cells')
+            print(f'Skipped {skipped} incomplete cells of kind {kind}', file = log)
             for c in neighborhoods:
                 (r1, c1) = c
                 n1 = f'{dataset}_{filename}_{kind}_{r1}_{c1}'
@@ -517,6 +518,7 @@ for dataset in datasets:
             if INDIVIDUAL:
                 store(Gf, target)
                 print(f'Graph exported for {filename} of {dataset}')
+        log.close()        
         ax.ticklabel_format(useOffset=False)
         plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 150)
         plt.clf()
