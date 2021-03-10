@@ -21,7 +21,7 @@ goal = 100 # how many cells in terms of latitude
 gray = 30 # discarding of grayish tones
 
 ### output control flags
-overwrite = True # overwrite all output
+overwrite = False # overwrite all output
 verbose = False # print additional debug info
 SAVE_ALL = False # save (tons of) images of individual cells
 INDIVIDUAL = True # save graphs of individual frames (needed for contract.py)
@@ -36,7 +36,7 @@ def crop(filename, polygon):
     original = Image.open(filename)
     (w, h) = original.size
     if 'JPG' not in filename: # for the TIF images that are single-channel
-        rpl = filename.replace('TIF', 'png')
+        rpl = filename.replace('TIF', 'png') # make those into png
         if not path.exists(rpl):
             data = np.asarray(original).flatten(order = 'C') # data into 1D
             data = np.round(np.interp(data, (data.min(), data.max()), (0, 255))) # normalize and discretize
@@ -335,6 +335,7 @@ def rectangle(wm, hm, xc, yc, color = 'blue', alpha = 0.4, linewidth = 2):
     return patches.Rectangle((xc - dx, yc - dy), 2 * dx, 2 * dy, edgecolor = color, facecolor = 'none', alpha = alpha, lw = linewidth)
 
 for dataset in datasets:           
+    log = open(f'log_{dataset}.txt', 'w')
     directory = r'/elisa/Dropbox/Research/Topics/Arboles/CA/RAW/' + dataset + '/images/'
     osys = platform.system()
     if osys == 'Linux':
@@ -441,7 +442,6 @@ for dataset in datasets:
     if overview:
         print('Cell-level computations suppressed')
         continue
-    log = open(f'log_{dataset}.txt', 'w')
     for kind in [1, 2, 3]:
         print(f'Extracting type {kind} cells for {dataset}')        
         positions, neighborhoods = grid(kind)
@@ -501,8 +501,8 @@ for dataset in datasets:
                         continue # skip an all-gray cell
                     (xc, yc, up) = positions[c]
                     if INDIVIDUAL:
-                        Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v, value = v)
-                    G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v, value = v)                    
+                        Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v[:3], value = v[3:])
+                    G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v[:3], value = v[3:])                    
                     values[c] = v
             print(f'Skipped {skipped} incomplete cells of kind {kind}', file = log)
             for c in neighborhoods:
@@ -518,8 +518,8 @@ for dataset in datasets:
             if INDIVIDUAL:
                 store(Gf, target)
                 print(f'Graph exported for {filename} of {dataset}')
-        log.close()        
         ax.ticklabel_format(useOffset=False)
         plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 150)
         plt.clf()
+    log.close()        
 
