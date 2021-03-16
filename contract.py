@@ -11,7 +11,7 @@ def average(v1, v2):
     assert len(v1) == len(v2)
     m = []
     for (x, y) in zip(v1, v2):
-        m.append((x + y) / 2)
+        m.append(int(round((x + y) / 2)))
     return m
 
 validate = False # check if matching (row, col) correspond to the same coordinates
@@ -42,7 +42,7 @@ for dataset in datasets:
         if contract:
             pos = nx.get_node_attributes(G, 'pos')
             val = nx.get_node_attributes(G, 'value')
-            col = nx.get_node_attributes(G, 'value')            
+            col = nx.get_node_attributes(G, 'color')            
             print(f'Contracting (this takes a long time)...')
             original = [n for n in G.nodes()]
             with open(f'log_{dataset}_{kind}.txt', 'w') as target:
@@ -75,6 +75,7 @@ for dataset in datasets:
                                             p = average(pos[n1], pos[n2]) 
                                             G.nodes[n1]['pos'] = p
                                             c = average(col[n1], col[n2])                                    
-                                            G.nodes[n1]['color'] = c                                            
+                                            G.nodes[n1]['color'] = c
+                                            del G.nodes[n1]['contraction'] # not needed, we have log files
             print(f'Storing a global graph of kind {kind}...')                                            
             store(G, f'{dataset}_global_{kind}.json')
