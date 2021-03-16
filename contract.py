@@ -30,17 +30,19 @@ for dataset in datasets:
             if dataset in filename and 'IMG' in filename and filename.endswith(f'_cells_{kind}.json'):
                 Gg = load(filename)        
                 pos = nx.get_node_attributes(Gg, 'pos')
-                vals = nx.get_node_attributes(Gg, 'value')
+                val = nx.get_node_attributes(Gg, 'value')
+                col = nx.get_node_attributes(Gg, 'color')
                 for node in Gg.nodes():
                     (px, py) = pos[node]
                     if not prune or  permitted.contains_points([(px, py)]): # not in the zone of interest                    
-                        G.add_node(node, pos = pos[node], value = vals[node])
+                        G.add_node(node, pos = pos[node], value = val[node], color = col[node])
                 for n1, n2 in Gg.edges():
                     if not prune or (G.has_node(n1) and G.has_node(n2)):
                         G.add_edge(n1, n2)
         if contract:
             pos = nx.get_node_attributes(G, 'pos')
-            vals = nx.get_node_attributes(G, 'value')            
+            val = nx.get_node_attributes(G, 'value')
+            col = nx.get_node_attributes(G, 'value')            
             print(f'Contracting (this takes a long time)...')
             original = [n for n in G.nodes()]
             with open(f'log_{dataset}_{kind}.txt', 'w') as target:
@@ -68,9 +70,11 @@ for dataset in datasets:
                                                 assert fabs(d) < epsilon # ensure similar coordinates
                                             G = nx.contracted_nodes(G, n1, n2)
                                             print(f'Contracted {n1} with {n2}', file = target)
-                                            v = average(vals[n1], vals[n2])                                    
+                                            v = average(val[n1], val[n2])                                    
                                             G.nodes[n1]['value'] = v
                                             p = average(pos[n1], pos[n2]) 
                                             G.nodes[n1]['pos'] = p
+                                            c = average(col[n1], col[n2])                                    
+                                            G.nodes[n1]['color'] = c                                            
             print(f'Storing a global graph of kind {kind}...')                                            
             store(G, f'{dataset}_global_{kind}.json')
