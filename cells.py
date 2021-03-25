@@ -18,12 +18,14 @@ from local import datasets, bbox, zone, channels
 
 ### ADJUSTABLE PARAMETERS ###
 goal = 100 # how many cells in terms of latitude 
-gray = 30 # discarding of grayish tones
+threshold = 20 # discarding of grayish tones (30 is good)
 
 ### output control flags
-overwrite = False # overwrite all output
+overwrite = True # overwrite all output
 verbose = False # print additional debug info
-SAVE_ALL = False # save (tons of) images of individual cells
+SAVE_ALL = False # save (tons of) filtered images of individual cells
+SAVE_RAW = False # an un-filtered image of an individual cell (tons of times)
+SHOW_MASK = False # show filtering mask (tons of times)
 INDIVIDUAL = True # save graphs of individual frames (needed for contract.py)
 histos = False # output altitude and angle data to stdout
 overview = False # no cell-level computations
@@ -31,7 +33,7 @@ overview = False # no cell-level computations
 from pylab import rcParams
 rcParams['figure.figsize'] = 12, 8
 
-def crop(filename, polygon):
+def crop(filename, polygon, mask = None):
     # https://stackoverflow.com/questions/22588074/polygon-crop-clip-using-python-pil
     original = Image.open(filename)
     (w, h) = original.size
@@ -44,14 +46,13 @@ def crop(filename, polygon):
             rgb = gs.convert('RGB')
             a = Image.new('L', (w, h), 255) # alpha channel (for masking)
             rgb.putalpha(a)
-            # rgb.show()
             rgb.save(rpl)
         original = Image.open(rpl)
-    mask = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(mask)
+    cellmask = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(cellmask)
     draw.polygon(polygon, fill = (0, 0, 0, 255), outline = None)
     joint = Image.new('RGBA', (w, h))
-    joint.paste(original.crop((0, 0, w, h)), (0, 0), mask)
+    joint.paste(original.crop((0, 0, w, h)), (0, 0), cellmask)
     joint.load()
     # https://stackoverflow.com/questions/14211340/automatically-cropping-an-image-with-python-pil
     image_data = np.asarray(joint)
@@ -60,7 +61,43 @@ def crop(filename, polygon):
     non_empty_rows = np.where(image_data_bw.max(axis = 1) > 0)[0]
     cb = (min(non_empty_rows), max(non_empty_rows), min(non_empty_columns), max(non_empty_columns))
     data = image_data[cb[0] : (cb[1] + 1), cb[2] : (cb[3] + 1) , :]
-    return Image.fromarray(data, "RGBA")
+    cell = Image.fromarray(data, "RGBA")
+    if SAVE_RAW: # overwrites the channels as it goes
+        cell.save('raw.png')
+    if 'RGB' in filename: # filter out pixels that are gray in tone
+        (w, h) = cell.size
+        pixels = cell.load()
+        for row in range(h):
+            for col in range(w):
+                r, g, b, a = pixels[col, row]
+                if max(r, g, b) - min(r, g, b) <= threshold: # too gray
+                    cell.putpixel((col, row), (0, 0, 0, 0)) # transparent black
+    else:
+        if SHOW_MASK:
+            cell.show()
+        assert mask is not None
+        (wm, hm) = mask.size
+        (w, h) = cell.size
+        if w != wm:
+            mask = mask.resize((w, h))
+        joint = Image.new('RGBA', (w, h))
+        joint.paste(cell, (0, 0), mask)
+        cell = joint
+        if SHOW_MASK:
+            cell.show()
+    return cell
+
+def mask(img):
+    (w, h) = img.size
+    pixelmask = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    pix = img.load()
+    target = pixelmask.load()
+    for row in range(h):
+        for col in range(w):
+            r, g, b, a = pix[col, row]
+            if a > 0: # only let the pixels in the non-transparent positions through the mask
+                target[col, row] = (0, 0, 0, 255)
+    return pixelmask
 
 # https://stackoverflow.com/questions/2049582/how-to-determine-if-a-point-is-in-a-2d-triangle 
 def sign(triangle):
@@ -170,16 +207,15 @@ def extract(frame, decimal = True):
     lonC = parse(lon, decimal)
     return lonC, latC, wm, hm, yaw
 
-def combine(frames, threshold):
+def combine(frames):
     pixels = np.asarray(contents['RGB'])
     rv = list()
     gv = list()
     bv = list()
-    for r, g, b in pixels[pixels[:, : ,3] == 255, : 3]:
-        if max(r, g, b) - min(r, g, b) > threshold: # if not too gray
-            rv.append(r)
-            gv.append(g)
-            bv.append(b)
+    for r, g, b in pixels[pixels[:, : ,3] == 255, : 3]: # only non-transparent pixels
+        rv.append(r)
+        gv.append(g)
+        bv.append(b)
     if len(rv) > 0:
         data = [np.mean(rv), np.mean(gv), np.mean(bv)] + [np.mean(np.asarray(contents[ch])) for ch in channels]        
         return [round(r) for r in data]
@@ -490,12 +526,16 @@ for dataset in datasets:
                            False: pos2pixel(p, lonC, latC, wm, hm, a, False) }
                 if None not in coords.values(): # whole cell for all channels
                     contents = { 'RGB': crop(directory + filename, coords[True]) }
+                    ntg = mask(contents['RGB']) # a mask to filter the not-too-gray positions
+                    if SHOW_MASK:
+                        contents['RGB'].show()
+                        ntg.show()
                     for ch in channels:
-                        contents[ch] = crop(directory + filename.replace('RGB.JPG', f'{ch}.TIF'), coords[False])
+                        contents[ch] = crop(directory + filename.replace('RGB.JPG', f'{ch}.TIF'), coords[False], mask = ntg)
                     if SAVE_ALL:
                         for ch in contents:
                             contents[ch].save(f'{dataset}_{filename[:-8]}_{ch}_{kind}_{row}_{column}.png')
-                    v = combine(contents, gray)
+                    v = combine(contents)
                     if None in v:
                         skipped += 1
                         continue # skip an all-gray cell
