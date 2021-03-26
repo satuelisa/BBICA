@@ -21,7 +21,7 @@ goal = 100 # how many cells in terms of latitude
 threshold = 20 # discarding of grayish tones (30 is good)
 
 ### output control flags
-overwrite = True # overwrite all output
+overwrite = False # overwrite all output
 verbose = False # print additional debug info
 SAVE_ALL = False # save (tons of) filtered images of individual cells
 SAVE_RAW = False # an un-filtered image of an individual cell (tons of times)
