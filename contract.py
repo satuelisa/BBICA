@@ -7,15 +7,18 @@ import os
 
 from local import datasets, zone
 
-def average(v1, v2):
+def average(v1, v2, rnd = False):
     assert len(v1) == len(v2)
     m = []
     for (x, y) in zip(v1, v2):
-        m.append(int(round((x + y) / 2)))
+        if rnd:
+            m.append(int(round((x + y) / 2)))
+        else:
+            m.append((x + y) / 2)
     return m
 
-validate = False # check if matching (row, col) correspond to the same coordinates
-epsilon = 0.000001 
+validate = False # check if matching (row, col) correspond to nearby coordinates
+epsilon = 0.000001 # tolerance distance for "same position"
 contract = True # whether to merge same-position cells from different frames
 prune = True # whether to limit to the zone of interest
 permitted = None
@@ -34,7 +37,7 @@ for dataset in datasets:
                 col = nx.get_node_attributes(Gg, 'color')
                 for node in Gg.nodes():
                     (px, py) = pos[node]
-                    if not prune or  permitted.contains_points([(px, py)]): # not in the zone of interest                    
+                    if not prune or permitted.contains_points([(px, py)]): # not in the zone of interest                    
                         G.add_node(node, pos = pos[node], value = val[node], color = col[node])
                 for n1, n2 in Gg.edges():
                     if not prune or (G.has_node(n1) and G.has_node(n2)):
@@ -66,16 +69,14 @@ for dataset in datasets:
                                             if validate:
                                                 dx = x1 - x2
                                                 dy = y1 - y2
-                                                d = sqrt(dx**2 + dy**2)
-                                                assert fabs(d) < epsilon # ensure similar coordinates
+                                                assert fabs(sqrt(dx**2 + dy**2)) < epsilon # ensure similar coordinates
                                             G = nx.contracted_nodes(G, n1, n2)
                                             print(f'Contracted {n1} with {n2}', file = target)
-                                            v = average(val[n1], val[n2])                                    
-                                            G.nodes[n1]['value'] = v
-                                            p = average(pos[n1], pos[n2]) 
-                                            G.nodes[n1]['pos'] = p
-                                            c = average(col[n1], col[n2])                                    
-                                            G.nodes[n1]['color'] = c
-                                            del G.nodes[n1]['contraction'] # not needed, we have log files
+                                            G.nodes[n1]['value'] = average(val[n1], val[n2], rnd = True)                                    
+                                            G.nodes[n1]['pos'] = average(pos[n1], pos[n2]) 
+                                            G.nodes[n1]['color'] = average(col[n1], col[n2], rnd = True)
+            for n1 in original:
+                if G.has_node(n1):
+                    del G.nodes[n1]['contraction'] # not needed, we have log files
             print(f'Storing a global graph of kind {kind}...')                                            
             store(G, f'{dataset}_global_{kind}.json')
