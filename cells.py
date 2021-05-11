@@ -19,12 +19,14 @@ from local import datasets, bbox, zone, channels
 ### ADJUSTABLE PARAMETERS ###
 goal = 100 # how many cells in terms of latitude 
 threshold = 20 # discarding of grayish tones (30 is good)
+content = 0.5 # skip cell with half or more of the pixels were discarded
 
 ### output control flags
-overwrite = False # overwrite all output
+kinds = [1, 2, 3] 
+overwrite = True # overwrite all output
 verbose = False # print additional debug info
-SAVE_ALL = False # save (tons of) filtered images of individual cells
-SAVE_RAW = False # an un-filtered image of an individual cell (tons of times)
+SAVE = set() # which cells to save (kind, row, column)
+RAW = False # save the raw cell (tons of times)
 SHOW_MASK = False # show filtering mask (tons of times)
 INDIVIDUAL = True # save graphs of individual frames (needed for contract.py)
 histos = False # output altitude and angle data to stdout
@@ -62,16 +64,21 @@ def crop(filename, polygon, mask = None):
     cb = (min(non_empty_rows), max(non_empty_rows), min(non_empty_columns), max(non_empty_columns))
     data = image_data[cb[0] : (cb[1] + 1), cb[2] : (cb[3] + 1) , :]
     cell = Image.fromarray(data, "RGBA")
-    if SAVE_RAW: # overwrites the channels as it goes
+    if RAW: # overwrites the channels as it goes
         cell.save('raw.png')
     if 'RGB' in filename: # filter out pixels that are gray in tone
         (w, h) = cell.size
+        total = w * h
+        skip = 1
         pixels = cell.load()
         for row in range(h):
             for col in range(w):
                 r, g, b, a = pixels[col, row]
                 if max(r, g, b) - min(r, g, b) <= threshold: # too gray
                     cell.putpixel((col, row), (0, 0, 0, 0)) # transparent black
+                    skip += 1
+        if skip / total > content:
+            return None
     else:
         if SHOW_MASK:
             cell.show()
@@ -478,7 +485,7 @@ for dataset in datasets:
     if overview:
         print('Cell-level computations suppressed')
         continue
-    for kind in [1, 2, 3]:
+    for kind in kinds:
         print(f'Extracting type {kind} cells for {dataset}')        
         positions, neighborhoods = grid(kind)
         cx = [v[0] for v in positions.values()]
@@ -525,25 +532,26 @@ for dataset in datasets:
                 coords = { True: pos2pixel(p, lonC, latC, wm, hm, a, True),
                            False: pos2pixel(p, lonC, latC, wm, hm, a, False) }
                 if None not in coords.values(): # whole cell for all channels
-                    contents = { 'RGB': crop(directory + filename, coords[True]) }
-                    ntg = mask(contents['RGB']) # a mask to filter the not-too-gray positions
-                    if SHOW_MASK:
-                        contents['RGB'].show()
-                        ntg.show()
-                    for ch in channels:
-                        contents[ch] = crop(directory + filename.replace('RGB.JPG', f'{ch}.TIF'), coords[False], mask = ntg)
-                    if SAVE_ALL:
-                        for ch in contents:
-                            contents[ch].save(f'{dataset}_{filename[:-8]}_{ch}_{kind}_{row}_{column}.png')
-                    v = combine(contents)
-                    if None in v:
+                    cell = crop(directory + filename, coords[True])
+                    if cell is None: # it was too gray
                         skipped += 1
-                        continue # skip an all-gray cell
-                    (xc, yc, up) = positions[c]
-                    if INDIVIDUAL:
-                        Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v[:3], value = v[3:])
-                    G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v[:3], value = v[3:])                    
-                    values[c] = v
+                    else: # there is content to process
+                        contents = { 'RGB': cell }
+                        ntg = mask(contents['RGB']) # a mask to filter the not-too-gray positions
+                        if SHOW_MASK:
+                            contents['RGB'].show()
+                            ntg.show()
+                        for ch in channels:
+                            contents[ch] = crop(directory + filename.replace('RGB.JPG', f'{ch}.TIF'), coords[False], mask = ntg)
+                        v = combine(contents)
+                        (xc, yc, up) = positions[c]
+                        if INDIVIDUAL:
+                            Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v[:3], value = v[3:])
+                        G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v[:3], value = v[3:])                    
+                        values[c] = v
+                        if (kind, row, column) in SAVE:
+                            for ch in contents:
+                                contents[ch].save(f'{dataset}_{filename[:-8]}_{ch}_{kind}_{row}_{column}.png')
             print(f'Skipped {skipped} incomplete cells of kind {kind}', file = log)
             for c in neighborhoods:
                 (r1, c1) = c

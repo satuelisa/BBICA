@@ -77,6 +77,7 @@ for dataset in datasets:
                                             G.nodes[n1]['color'] = average(col[n1], col[n2], rnd = True)
             for n1 in original:
                 if G.has_node(n1):
-                    del G.nodes[n1]['contraction'] # not needed, we have log files
+                    if 'contraction' in G.nodes[n1]:
+                        del G.nodes[n1]['contraction'] # not needed, we have log files
             print(f'Storing a global graph of kind {kind}...')                                            
             store(G, f'{dataset}_global_{kind}.json')

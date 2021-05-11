@@ -3,7 +3,7 @@ from dumps import store, load
 import networkx as nx
 from sys import argv
 
-tooMany = 500 # surpress the labels for large graphs
+tooMany = 100 # surpress the labels for large graphs
 plt.rcParams['figure.figsize'] = 40, 30
 verbose = False # print out the edge list
 filename = argv[1]
