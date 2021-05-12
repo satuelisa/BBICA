@@ -19,7 +19,7 @@ from local import datasets, bbox, zone, channels
 ### ADJUSTABLE PARAMETERS ###
 goal = 100 # how many cells in terms of latitude 
 threshold = 20 # discarding of grayish tones (30 is good)
-content = 0.5 # skip cell with half or more of the pixels were discarded
+content = 0.3 # skip cell where too many of the pixels were discarded
 
 ### output control flags
 kinds = [1, 2, 3] 
@@ -293,7 +293,7 @@ import platform
 ER = 6378.137 # earth radius in km
 MD = (1 / ((2 * pi / 360) * ER)) / 1000
 
-def cell(xc, yc, kind, up = True):
+def shape(xc, yc, kind, up = True):
     unit = step(kind)
     sh = unit / 2
     height = sqrt(3) * sh
@@ -506,7 +506,7 @@ for dataset in datasets:
         zones = dict()
         for c in positions:
             (xc, yc, up) = positions[c]
-            p = cell(xc, yc, kind, up)
+            p = shape(xc, yc, kind, up)
             zones[c] = p
             polygon = patches.Polygon(p, edgecolor = 'green', facecolor = 'none', alpha = 0.7, lw = 1)        
             ax.add_patch(polygon)
