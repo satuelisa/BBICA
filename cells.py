@@ -29,6 +29,10 @@ SAVE = set() # which cells to save (kind, row, column)
 RAW = False # save the raw cell (tons of times)
 SHOW_MASK = False # show filtering mask (tons of times)
 INDIVIDUAL = True # save graphs of individual frames (needed for contract.py)
+DRAW_CELLS = False # draw each cell border on the overview plot
+DRAW_CELL_CENTER = False # draw each cell center
+DRAW_FRAME_CENTER = True
+DRAW_FRAME_BORDER = True
 histos = False # output altitude and angle data to stdout
 overview = False # no cell-level computations
 
@@ -39,7 +43,7 @@ def crop(filename, polygon, mask = None):
     # https://stackoverflow.com/questions/22588074/polygon-crop-clip-using-python-pil
     original = Image.open(filename)
     (w, h) = original.size
-    if 'JPG' not in filename: # for the TIF images that are single-channel
+    if 'TIF' in filename: # for the TIF images that are single-channel
         rpl = filename.replace('TIF', 'png') # make those into png
         if not path.exists(rpl):
             data = np.asarray(original).flatten(order = 'C') # data into 1D
@@ -180,7 +184,7 @@ modern = False #  images taken with an old firmware
 resolution = {True: (4608, 3456), False: (1280, 960)}
 
 def extract(frame, decimal = True):
-    filename = frame + '_RGB.JPG'
+    filename = frame + '_RGB.JPG' # the unenhanced JPG has the metadata
     info = metadata(filename)
     if verbose:
         for key in info:
@@ -372,10 +376,10 @@ def pos2pixel(cell, lonC, latC, xm, ym, a, rgb = True):
     assert len(cell) == len(translated) 
     return translated 
 
-def rectangle(wm, hm, xc, yc, color = 'blue', alpha = 0.4, linewidth = 2):
+def rectangle(wm, hm, xc, yc):
     dx = MD * (wm / 2) / cos(yc * (pi / 180))  
     dy = MD * (hm / 2)
-    return patches.Rectangle((xc - dx, yc - dy), 2 * dx, 2 * dy, edgecolor = color, facecolor = 'none', alpha = alpha, lw = linewidth)
+    return xc - dx, yc - dy, 2 * dx, 2 * dy
 
 for dataset in datasets:           
     log = open(f'log_{dataset}.txt', 'w')
@@ -390,10 +394,10 @@ for dataset in datasets:
         quit()
     centers = dict()
     frameRGB = dict()
-    for filename in os.listdir(directory):
-        if filename.endswith('_RGB.JPG'):
-            if path.exists(directory + filename.replace('RGB.JPG', 'NIR.TIF')) \
-               and path.exists(directory + filename.replace('RGB.JPG', 'RED.TIF')):
+    for filename in os.listdir(directory + '/enhanced'):
+        if filename.endswith('_RGB.png'):
+            if path.exists(directory + filename.replace('RGB.png', 'NIR.TIF')) \
+               and path.exists(directory + filename.replace('RGB.png', 'RED.TIF')):
                 lonC, latC, wm, hm, yaw = extract(directory + filename[:-8])
                 pos = (lonC, latC)
                 (x, y) = pos 
@@ -416,7 +420,7 @@ for dataset in datasets:
                           line_width = 2, line_alpha = 0.5, point_size = 3)
     plt.xlim(bbox[0])
     plt.ylim(bbox[1])
-    square = patches.Polygon(np.array(zone), edgecolor = 'green', facecolor = 'none', alpha = 0.7, lw = 3) 
+    square = patches.Polygon(np.array(zone), edgecolor = 'black', facecolor = 'none', alpha = 0.3, lw = 2) 
     ax.add_patch(square)
     plt.xlabel('Longitude')
     plt.ylabel('Latitude')
@@ -497,8 +501,8 @@ for dataset in datasets:
         ax.set_ylim(bbox[1])
         ax.set_xlabel('Longitude')
         ax.set_ylabel('Latitude')
-        ax.scatter(x, y, marker = 'o', color = 'black')
-        ax.scatter(cx, cy, marker = 'o', color = 'red', alpha = 0.3)
+        if DRAW_CELL_CENTER:
+            ax.scatter(cx, cy, marker = 'o', color = 'red', alpha = 0.3) # centers of the cells
         ax.set_xlim(bbox[0])
         ax.set_ylim(bbox[1])
         ax.set_xlabel('Longitude')
@@ -508,8 +512,9 @@ for dataset in datasets:
             (xc, yc, up) = positions[c]
             p = shape(xc, yc, kind, up)
             zones[c] = p
-            polygon = patches.Polygon(p, edgecolor = 'green', facecolor = 'none', alpha = 0.7, lw = 1)        
-            ax.add_patch(polygon)
+            polygon = patches.Polygon(p, edgecolor = 'green', facecolor = 'none', alpha = 0.6, lw = 1)
+            if DRAW_CELLS:
+                ax.add_patch(polygon)
         print(f'Polygons of kind {kind} computed for {dataset}')
         td = ax.transData # https://stackoverflow.com/questions/4285103/matplotlib-rotating-a-patch
         for filename in frameRGB:
@@ -520,11 +525,22 @@ for dataset in datasets:
                     continue # no need to reprocess (delete this for a full wipe)
             Gf = nx.Graph()
             wm, hm, lonC, latC, a = frameRGB[filename]
-            r = rectangle(wm, hm, lonC, latC)
+            if DRAW_FRAME_CENTER:
+                ax.scatter(lonC, latC, marker = 'o', color = 'black') # centers of the frames
+            xs, ys, rw, rh = rectangle(wm, hm, lonC, latC)
             (xf, yf) = centers[filename]
             rotation = matplotlib.transforms.Affine2D().rotate_deg_around(xf, yf, a - 90) + td # west is zero, north is no rotation
+            r = patches.Rectangle((xs, ys), rw, rh, edgecolor = 'blue', facecolor = 'none', alpha = 0.4, lw = 2)
             r.set_transform(rotation)
-            ax.add_patch(r)
+            im = Image.open(directory + 'enhanced/' + filename)
+            iw, ih = im.size
+            xu = iw / rw
+            yu = ih / rh
+            # right size, right position, rotation
+            it = matplotlib.transforms.Affine2D().scale(1 / xu, 1 / yu).translate(xs, ys).rotate_deg_around(xf, yf, a - 90) +  td
+            ax.imshow(im, transform = it)
+            if DRAW_FRAME_BORDER:
+                ax.add_patch(r)
             skipped = 0
             for c in positions:
                 (row, column) = c
@@ -532,7 +548,7 @@ for dataset in datasets:
                 coords = { True: pos2pixel(p, lonC, latC, wm, hm, a, True),
                            False: pos2pixel(p, lonC, latC, wm, hm, a, False) }
                 if None not in coords.values(): # whole cell for all channels
-                    cell = crop(directory + filename, coords[True])
+                    cell = crop(directory + 'enhanced/' + filename, coords[True])
                     if cell is None: # it was too gray
                         skipped += 1
                     else: # there is content to process
@@ -542,7 +558,7 @@ for dataset in datasets:
                             contents['RGB'].show()
                             ntg.show()
                         for ch in channels:
-                            contents[ch] = crop(directory + filename.replace('RGB.JPG', f'{ch}.TIF'), coords[False], mask = ntg)
+                            contents[ch] = crop(directory + filename.replace('RGB.png', f'{ch}.TIF'), coords[False], mask = ntg)
                         v = combine(contents)
                         (xc, yc, up) = positions[c]
                         if INDIVIDUAL:
@@ -567,7 +583,7 @@ for dataset in datasets:
                 store(Gf, target)
                 print(f'Graph exported for {filename} of {dataset}')
         ax.ticklabel_format(useOffset=False)
-        plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 150)
+        plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 300) # the overview visualization
         plt.clf()
     log.close()        
 
