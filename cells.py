@@ -33,8 +33,9 @@ DRAW_CELLS = False # draw each cell border on the overview plot
 DRAW_CELL_CENTER = False # draw each cell center
 DRAW_FRAME_CENTER = True
 DRAW_FRAME_BORDER = True
+SAVE_STAGES = True
 histos = False # output altitude and angle data to stdout
-overview = False # no cell-level computations
+overview = True # no cell-level computations
 
 from pylab import rcParams
 rcParams['figure.figsize'] = 12, 8
@@ -486,9 +487,6 @@ for dataset in datasets:
     plt.ylim(bbox[1])
     plt.savefig(f'{dataset}_graph.png', bbox_inches = "tight", dpi = 150)
     plt.clf()
-    if overview:
-        print('Cell-level computations suppressed')
-        continue
     for kind in kinds:
         print(f'Extracting type {kind} cells for {dataset}')        
         positions, neighborhoods = grid(kind)
@@ -541,6 +539,12 @@ for dataset in datasets:
             ax.imshow(im, transform = it)
             if DRAW_FRAME_BORDER:
                 ax.add_patch(r)
+            if SAVE_STAGES:
+                ax.ticklabel_format(useOffset=False)
+                plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 300) # overwrite after each new frame has been added
+            if overview:
+                print('Cell-level computations suppressed')
+                continue
             skipped = 0
             for c in positions:
                 (row, column) = c
