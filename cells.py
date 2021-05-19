@@ -1,32 +1,55 @@
 # https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.Voronoi.html
+from math import pi, sin, cos, atan2, sqrt, floor, ceil
 from scipy.spatial import Voronoi, voronoi_plot_2d 
 from matplotlib.collections import LineCollection
+from PIL.ExifTags import TAGS, GPSTAGS
+import matplotlib.patches as patches
 from collections import defaultdict
 from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
 from dumps import store, load
-from extract import crop
+from pylab import rcParams
 from random import random
 import simplejson as json
 import networkx as nx
 from os import path
+import numpy as np
 import matplotlib
+import exiftool
+import platform
+import base64
+import struct
 import os.path
 import os
 
+# python3 -m pip install python-xmp-toolkit
+from libxmp.utils import file_to_dict
+
+# local files
+from extract import crop
 from local import datasets, bbox, zone, channels
+rcParams['figure.figsize'] = 12, 8
 
 ### ADJUSTABLE PARAMETERS ###
 goal = 100 # how many cells in terms of latitude 
 threshold = 20 # discarding of grayish tones (30 is good)
 content = 0.3 # skip cell where too many of the pixels were discarded
 
-### output control flags
+# https://rechneronline.de/earth-radius/#:~:text=Earth%20radius%20at%20sea%20level,(3958.756%20mi)%20on%20average.
+# using latitude 24.2091 and altitude 2230 m (de los metadatos)
+EARTH = 6376.796 # km
+MD = (1 / ((2 * pi / 360) * EARTH)) / 1000
+
+resolution = {True: (4608, 3456), False: (1280, 960)} # sensor specs (True for RGB)
+modern = False #  images taken with an old firmware
+
+# output control flags
 kinds = [1, 2, 3] 
 overwrite = True # overwrite all output
 verbose = False # print additional debug info
 SAVE = set() # which cells to save (kind, row, column)
 RAW = False # save the raw cell (tons of times)
+ALTITUDE = False # print altitude from metadata
 SHOW_MASK = False # show filtering mask (tons of times)
 INDIVIDUAL = True # save graphs of individual frames (needed for contract.py)
 DRAW_CELLS = False # draw each cell border on the overview plot
@@ -37,8 +60,6 @@ SAVE_STAGES = True
 histos = False # output altitude and angle data to stdout
 overview = True # no cell-level computations
 
-from pylab import rcParams
-rcParams['figure.figsize'] = 12, 8
 
 def crop(filename, polygon, mask = None):
     # https://stackoverflow.com/questions/22588074/polygon-crop-clip-using-python-pil
@@ -127,14 +148,13 @@ def inside(triangle, point):
     return not (neg and pos)
 
 # https://stackoverflow.com/questions/639695/how-to-convert-latitude-or-longitude-to-meters
-from math import pi, sin, cos, atan2, sqrt, floor, ceil
 def dist(c1, c2):
     lat1, lon1 = c1
     lat2, lon2 = c2
     dLat = lat2 * pi / 180 - lat1 * pi / 180
     dLon = lon2 * pi / 180 - lon1 * pi / 180
     a = sin(dLat / 2) * sin(dLat / 2) + cos(lat1 * pi / 180) * cos(lat2 * pi / 180) * sin(dLon / 2) * sin(dLon / 2)
-    return 6378.137 * 2 * atan2(sqrt(a), sqrt(1 - a)) * 1000
+    return EARTH * 2 * atan2(sqrt(a), sqrt(1 - a)) * 1000
 
 def parse(s, decimal = True): # from MinDec to DegDec
     ref = s[-1]
@@ -148,10 +168,9 @@ def parse(s, decimal = True): # from MinDec to DegDec
     else:
         return str(degrees)+ 'D' + str(minutes) + 'M' + str(seconds) + 'S ' + ref 
 
+# https://www.earthdatascience.org/courses/use-data-open-source-python/multispectral-remote-sensing/vegetation-indices-in-python/    
 # exiftool -xmp -b <filename>
 # https://stackoverflow.com/questions/6822693/read-image-xmp-data-in-python
-# python3 -m pip install python-xmp-toolkit
-from libxmp.utils import file_to_dict
 def metadata(frame):
     xmp = file_to_dict(frame)
     info = dict()
@@ -160,8 +179,6 @@ def metadata(frame):
         for data in gr:
             info[data[0]] = data[1:]
     return info
-
-import numpy as np
 
 # https://stackoverflow.com/questions/24467972/calculate-area-of-polygon-given-x-y-coordinates
 def computeArea(points):
@@ -172,17 +189,6 @@ def computeArea(points):
 def frac(fs):
     f = fs.split('/')
     return int(f[0]) / int(f[1])
-
-# https://www.earthdatascience.org/courses/use-data-open-source-python/multispectral-remote-sensing/vegetation-indices-in-python/
-from PIL import Image
-from PIL.ExifTags import TAGS, GPSTAGS
-import exiftool
-import base64
-import struct
-modern = False #  images taken with an old firmware
-
-# sensor specs (True for RGB)
-resolution = {True: (4608, 3456), False: (1280, 960)}
 
 def extract(frame, decimal = True):
     filename = frame + '_RGB.JPG' # the unenhanced JPG has the metadata
@@ -205,6 +211,8 @@ def extract(frame, decimal = True):
     assert round(frac(info['exif:FocalLength'][0]), 3) == 4.88 # sensor specs
     assert int(info['exif:GPSAltitudeRef'][0]) == 0 # above sea level
     alt = frac(info['exif:GPSAltitude'][0])
+    if ALTITUDE:
+        print(alt)
     exif = Image.open(filename)._getexif() # just checking consistency
     if histos: 
         print(dataset, yaw, alt) 
@@ -236,10 +244,10 @@ def combine(frames):
 latSpan = bbox[1][1] - bbox[1][0]
 lonSpan = bbox[0][1] - bbox[0][0]
 step = latSpan / goal
-area = step**2 # square area
+area = step ** 2 # square area
 
 def step(kind):
-    return sqrt(area if kind == 1 else (4 * area / sqrt(3) if kind == 2 else 2 * area / 3**1.5))
+    return sqrt(area if kind == 1 else (4 * area / sqrt(3) if kind == 2 else 2 * area / 3 ** 1.5))
     
 def grid(kind):
     unit = step(kind)
@@ -293,11 +301,6 @@ def grid(kind):
     return centers, N
 
 # https://stackoverflow.com/questions/7477003/calculating-new-longitude-latitude-from-old-n-meters
-import matplotlib.patches as patches
-import platform
-ER = 6378.137 # earth radius in km
-MD = (1 / ((2 * pi / 360) * ER)) / 1000
-
 def shape(xc, yc, kind, up = True):
     unit = step(kind)
     sh = unit / 2
@@ -341,9 +344,9 @@ def rotate(origin, point, angle):
 
 # https://gis.stackexchange.com/questions/2951/algorithm-for-offsetting-a-latitude-longitude-by-some-amount-of-meters
 def offset(lon, lat, dx, dy):
-    dLat = dy / (1000 * ER)
-    dLon = dx / (1000 * ER * cos(pi * lat / 180))
-    return lon + dLon * 180/pi, lat + dLat * 180 / pi, 
+    dLat = dy / (1000 * EARTH)
+    dLon = dx / (1000 * EARTH * cos(pi * lat / 180))
+    return lon + dLon * 180 / pi, lat + dLat * 180 / pi, 
 
 def bounds(lonC, latC, xm, ym):
      xh = xm / 2
@@ -532,6 +535,7 @@ for dataset in datasets:
             r.set_transform(rotation)
             im = Image.open(directory + 'enhanced/' + filename)
             iw, ih = im.size
+            assert iw == resolution[True][0] and ih == resolution[True][1]
             xu = iw / rw
             yu = ih / rh
             # right size, right position, rotation
@@ -540,7 +544,7 @@ for dataset in datasets:
             if DRAW_FRAME_BORDER:
                 ax.add_patch(r)
             if SAVE_STAGES:
-                ax.ticklabel_format(useOffset=False)
+                ax.ticklabel_format(useOffset = False)
                 plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 300) # overwrite after each new frame has been added
             if overview:
                 print('Cell-level computations suppressed')
