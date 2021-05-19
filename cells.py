@@ -22,6 +22,12 @@ import struct
 import os.path
 import os
 
+FocalPlaneResolutionUnit = {
+    '2': 25.4, # inch in the standard
+    '3': 10, # centimeter in the standard
+    '4': 1 # mm for Pix4D
+}
+
 # python3 -m pip install python-xmp-toolkit
 from libxmp.utils import file_to_dict
 
@@ -39,8 +45,9 @@ content = 0.3 # skip cell where too many of the pixels were discarded
 # using latitude 24.2091 and altitude 2230 m (de los metadatos)
 altitude = 2230 # m
 altThr = 30 # m (threshold)
+mm2m = 100 * 10 # millimeters in a meter (m -> cm -> mm)
 EARTH = 6376.796 # km
-MD = (1 / ((2 * pi / 360) * EARTH)) / 1000
+MD = (1 / ((2 * pi / 360) * EARTH)) / 1000 # meters
 
 resolution = {True: (4608, 3456), False: (1280, 960)} # sensor specs (True for RGB)
 modern = False #  images taken with an old firmware
@@ -61,7 +68,6 @@ DRAW_FRAME_BORDER = True
 SAVE_STAGES = True
 histos = False # output altitude and angle data to stdout
 overview = True # no cell-level computations
-
 
 def crop(filename, polygon, mask = None):
     # https://stackoverflow.com/questions/22588074/polygon-crop-clip-using-python-pil
@@ -111,9 +117,9 @@ def crop(filename, polygon, mask = None):
         if SHOW_MASK:
             cell.show()
         assert mask is not None
-        (wm, hm) = mask.size
+        (wkm, hkm) = mask.size
         (w, h) = cell.size
-        if w != wm:
+        if w != wkm:
             mask = mask.resize((w, h))
         joint = Image.new('RGBA', (w, h))
         joint.paste(cell, (0, 0), mask)
@@ -156,7 +162,7 @@ def dist(c1, c2):
     dLat = lat2 * pi / 180 - lat1 * pi / 180
     dLon = lon2 * pi / 180 - lon1 * pi / 180
     a = sin(dLat / 2) * sin(dLat / 2) + cos(lat1 * pi / 180) * cos(lat2 * pi / 180) * sin(dLon / 2) * sin(dLon / 2)
-    return EARTH * 2 * atan2(sqrt(a), sqrt(1 - a)) * 1000
+    return EARTH * 2 * atan2(sqrt(a), sqrt(1 - a)) # km
 
 def parse(s, decimal = True): # from MinDec to DegDec
     ref = s[-1]
@@ -201,13 +207,21 @@ def extract(frame, decimal = True):
     yaw = float(info['Camera:Yaw'][0]) # in degrees
     pitch = float(info['Camera:Pitch'][0])
     roll = float(info['Camera:Roll'][0])
-    assert int(info['exif:FocalPlaneResolutionUnit'][0]) == 4 # mm
+    ru = info['exif:FocalPlaneResolutionUnit'][0]
+    resUnit = FocalPlaneResolutionUnit.get(ru, None)
+    assert resUnit is not None # it needs to be 2, 3, or 4
     w = int(info['exif:PixelXDimension'][0])
     assert w == resolution[True][0]
-    wm = w * frac(info['exif:FocalPlaneXResolution'][0]) / 100000 # image width in meters 
+    xr = frac(info['exif:FocalPlaneXResolution'][0])
+    wm = w * xr * resUnit / mm2m # image width in m
     h = int(info['exif:PixelYDimension'][0])
     assert h == resolution[True][1]    
-    hm = h * frac(info['exif:FocalPlaneYResolution'][0]) / 100000 # image height in meters
+    yr = frac(info['exif:FocalPlaneYResolution'][0])
+    hm = h * yr * resUnit / mm2m # image height in m
+    # PROBLEM: it should be in mm but it appears to be in 10 cm instead
+    wm /= 100
+    hm /= 100
+    print(xr, yr, wm, hm)    
     lat = info['exif:GPSLatitude'][0]
     lon = info['exif:GPSLongitude'][0]
     assert round(frac(info['exif:FocalLength'][0]), 3) == 4.88 # sensor specs
@@ -348,7 +362,7 @@ def rotate(origin, point, angle):
 
 # https://gis.stackexchange.com/questions/2951/algorithm-for-offsetting-a-latitude-longitude-by-some-amount-of-meters
 def offset(lon, lat, dx, dy):
-    dLat = dy / (1000 * EARTH)
+    dLat = dy / (1000 * EARTH) # meters
     dLon = dx / (1000 * EARTH * cos(pi * lat / 180))
     return lon + dLon * 180 / pi, lat + dLat * 180 / pi, 
 
