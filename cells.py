@@ -1,5 +1,5 @@
 # https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.Voronoi.html
-from math import pi, sin, cos, atan2, sqrt, floor, ceil
+from math import pi, sin, cos, atan2, sqrt, floor, ceil, fabs
 from scipy.spatial import Voronoi, voronoi_plot_2d 
 from matplotlib.collections import LineCollection
 from PIL.ExifTags import TAGS, GPSTAGS
@@ -37,6 +37,8 @@ content = 0.3 # skip cell where too many of the pixels were discarded
 
 # https://rechneronline.de/earth-radius/#:~:text=Earth%20radius%20at%20sea%20level,(3958.756%20mi)%20on%20average.
 # using latitude 24.2091 and altitude 2230 m (de los metadatos)
+altitude = 2230 # m
+altThr = 30 # m (threshold)
 EARTH = 6376.796 # km
 MD = (1 / ((2 * pi / 360) * EARTH)) / 1000
 
@@ -196,7 +198,7 @@ def extract(frame, decimal = True):
     if verbose:
         for key in info:
             print(key)
-    yaw = float(info['Camera:Yaw'][0])
+    yaw = float(info['Camera:Yaw'][0]) # in degrees
     pitch = float(info['Camera:Pitch'][0])
     roll = float(info['Camera:Roll'][0])
     assert int(info['exif:FocalPlaneResolutionUnit'][0]) == 4 # mm
@@ -211,6 +213,8 @@ def extract(frame, decimal = True):
     assert round(frac(info['exif:FocalLength'][0]), 3) == 4.88 # sensor specs
     assert int(info['exif:GPSAltitudeRef'][0]) == 0 # above sea level
     alt = frac(info['exif:GPSAltitude'][0])
+    if fabs(altitude - alt) > altThr:
+        return None, None, None, None, None
     if ALTITUDE:
         print(alt)
     exif = Image.open(filename)._getexif() # just checking consistency
@@ -403,6 +407,8 @@ for dataset in datasets:
             if path.exists(directory + filename.replace('RGB.png', 'NIR.TIF')) \
                and path.exists(directory + filename.replace('RGB.png', 'RED.TIF')):
                 lonC, latC, wm, hm, yaw = extract(directory + filename[:-8])
+                if lonC is None:
+                    continue # do NOT process frames from initial flight altitudes
                 pos = (lonC, latC)
                 (x, y) = pos 
                 frameRGB[filename] = (wm, hm, lonC, latC, yaw)
