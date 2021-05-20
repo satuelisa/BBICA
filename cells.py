@@ -1,5 +1,5 @@
 # https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.Voronoi.html
-from math import pi, sin, cos, atan2, sqrt, floor, ceil, fabs
+from math import pi, sin, cos, tan, atan2, sqrt, floor, ceil, fabs
 from scipy.spatial import Voronoi, voronoi_plot_2d 
 from matplotlib.collections import LineCollection
 from PIL.ExifTags import TAGS, GPSTAGS
@@ -22,6 +22,9 @@ import struct
 import os.path
 import os
 
+flightAltitude = 100 # meters, set on the drones
+FieldOfView =  65.5 # degrees, drone property
+fov = (2 * pi) * (FieldOfView /  360) # radians
 FocalPlaneResolutionUnit = {
     '2': 25.4, # inch in the standard
     '3': 10, # centimeter in the standard
@@ -45,6 +48,7 @@ content = 0.3 # skip cell where too many of the pixels were discarded
 # using latitude 24.2091 and altitude 2230 m (de los metadatos)
 altitude = 2230 # m
 altThr = 30 # m (threshold)
+planar = 10 # degrees, how tilted the drone can be
 mm2m = 100 * 10 # millimeters in a meter (m -> cm -> mm)
 EARTH = 6376.796 # km
 MD = (1 / ((2 * pi / 360) * EARTH)) / 1000 # meters
@@ -204,24 +208,25 @@ def extract(frame, decimal = True):
     if verbose:
         for key in info:
             print(key)
-    yaw = float(info['Camera:Yaw'][0]) # in degrees
-    pitch = float(info['Camera:Pitch'][0])
-    roll = float(info['Camera:Roll'][0])
+    yaw = float(info['Camera:Yaw'][0]) # in degrees, frontal rotation
+    pitch = float(info['Camera:Pitch'][0]) # in degrees, up/down nose 
+    roll = float(info['Camera:Roll'][0]) # in degrees, side rotation
+    if fabs(pitch) > planar or fabs(roll) > planar: # discard if not close to "flat"
+        return None, None, None, None, None
     ru = info['exif:FocalPlaneResolutionUnit'][0]
     resUnit = FocalPlaneResolutionUnit.get(ru, None)
     assert resUnit is not None # it needs to be 2, 3, or 4
     w = int(info['exif:PixelXDimension'][0])
     assert w == resolution[True][0]
     xr = frac(info['exif:FocalPlaneXResolution'][0])
-    wm = w * xr * resUnit / mm2m # image width in m
+    wm0 = w * xr * resUnit / mm2m # image width in m
     h = int(info['exif:PixelYDimension'][0])
     assert h == resolution[True][1]    
     yr = frac(info['exif:FocalPlaneYResolution'][0])
-    hm = h * yr * resUnit / mm2m # image height in m
-    # PROBLEM: it should be in mm but it appears to be in 10 cm instead
-    wm /= 100
-    hm /= 100
-    print(xr, yr, wm, hm)    
+    hm0 = h * yr * resUnit / mm2m # image height in m
+    wm = 2 * (flightAltitude * tan(fov / 2))
+    hm = wm * (hm0 / wm0)
+    print(wm, hm)
     lat = info['exif:GPSLatitude'][0]
     lon = info['exif:GPSLongitude'][0]
     assert round(frac(info['exif:FocalLength'][0]), 3) == 4.88 # sensor specs
