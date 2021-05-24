@@ -47,8 +47,8 @@ content = 0.3 # skip cell where too many of the pixels were discarded
 # https://rechneronline.de/earth-radius/#:~:text=Earth%20radius%20at%20sea%20level,(3958.756%20mi)%20on%20average.
 # using latitude 24.2091 and altitude 2230 m (de los metadatos)
 altitude = 2230 # m
-altThr = 30 # m (threshold)
-planar = 10 # degrees, how tilted the drone can be
+altThr = 25 # m (threshold)
+planar = 7 # degrees, how tilted the drone can be
 mm2m = 100 * 10 # millimeters in a meter (m -> cm -> mm)
 EARTH = 6376.796 # km
 MD = (1 / ((2 * pi / 360) * EARTH)) / 1000 # meters
@@ -219,14 +219,13 @@ def extract(frame, decimal = True):
     w = int(info['exif:PixelXDimension'][0])
     assert w == resolution[True][0]
     xr = frac(info['exif:FocalPlaneXResolution'][0])
-    wm0 = w * xr * resUnit / mm2m # image width in m
+    wm0 = w * xr * resUnit / mm2m # image width in m on the focal plane
     h = int(info['exif:PixelYDimension'][0])
     assert h == resolution[True][1]    
     yr = frac(info['exif:FocalPlaneYResolution'][0])
-    hm0 = h * yr * resUnit / mm2m # image height in m
-    wm = 2 * (flightAltitude * tan(fov / 2))
-    hm = wm * (hm0 / wm0)
-    print(wm, hm)
+    hm0 = h * yr * resUnit / mm2m # image height in m on the focal plane
+    wm = 2 * (flightAltitude * tan(fov / 2)) # image width in meters on assumed ground level
+    hm = wm * (hm0 / wm0) # conserve the proportions from the focal plane
     lat = info['exif:GPSLatitude'][0]
     lon = info['exif:GPSLongitude'][0]
     assert round(frac(info['exif:FocalLength'][0]), 3) == 4.88 # sensor specs
@@ -440,7 +439,9 @@ for dataset in datasets:
                     print('# missing multispectral data for ' + filename)
     print('Processing', dataset)
     pos = list(centers.values())
-    assert len(pos) >= 30 # at least thirty meaningful frames 
+    fc = len(pos)
+    assert fc >= 30 # at least thirty meaningful frames
+    print(f'Combining information from {fc} frames')
     x = [c[0] for c in pos] 
     y = [c[1] for c in pos]
     cells = Voronoi(pos)
@@ -552,11 +553,12 @@ for dataset in datasets:
             Gf = nx.Graph()
             wm, hm, lonC, latC, a = frameRGB[filename]
             if DRAW_FRAME_CENTER:
-                ax.scatter(lonC, latC, marker = 'o', color = 'black') # centers of the frames
+                ax.scatter(lonC, latC, marker = 'o', color = 'black', alpha = 0.6) # centers of the frames
             xs, ys, rw, rh = rectangle(wm, hm, lonC, latC)
             (xf, yf) = centers[filename]
-            rotation = matplotlib.transforms.Affine2D().rotate_deg_around(xf, yf, a - 90) + td # west is zero, north is no rotation
-            r = patches.Rectangle((xs, ys), rw, rh, edgecolor = 'blue', facecolor = 'none', alpha = 0.4, lw = 2)
+            ra = a - 90 # west is zero, north is no rotation
+            rotation = matplotlib.transforms.Affine2D().rotate_deg_around(xf, yf, a) + td 
+            r = patches.Rectangle((xs, ys), rw, rh, edgecolor = 'blue', facecolor = 'none', alpha = 0.2, lw = 1)
             r.set_transform(rotation)
             im = Image.open(directory + 'enhanced/' + filename)
             iw, ih = im.size
@@ -564,13 +566,16 @@ for dataset in datasets:
             xu = iw / rw
             yu = ih / rh
             # right size, right position, rotation
-            it = matplotlib.transforms.Affine2D().scale(1 / xu, 1 / yu).translate(xs, ys).rotate_deg_around(xf, yf, a - 90) +  td
-            ax.imshow(im, transform = it)
+            it = matplotlib.transforms.Affine2D().scale(1 / xu, 1 / yu).translate(xs, ys).rotate_deg_around(xf, yf, a) +  td
+            ax.imshow(im, transform = it, alpha = 0.6)
             if DRAW_FRAME_BORDER:
                 ax.add_patch(r)
             if SAVE_STAGES:
                 ax.ticklabel_format(useOffset = False)
-                plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 300) # overwrite after each new frame has been added
+                # overwrite after each new frame has been added                
+                plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 300)
+                print(filename)
+                quit()
             if overview:
                 print('Cell-level computations suppressed')
                 continue
