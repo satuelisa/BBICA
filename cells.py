@@ -556,26 +556,32 @@ for dataset in datasets:
                 ax.scatter(lonC, latC, marker = 'o', color = 'black', alpha = 0.6) # centers of the frames
             xs, ys, rw, rh = rectangle(wm, hm, lonC, latC)
             (xf, yf) = centers[filename]
-            ra = a - 90 # west is zero, north is no rotation
-            rotation = matplotlib.transforms.Affine2D().rotate_deg_around(xf, yf, a) + td 
+            ra = a + 90 # west is zero, north is no rotation, based on drone tests,
+            # but in reality we need to add 90 degrees instead of subtracting them,
+            # based on image composition tests, so something rotates the image at some point
+            # maybe a metadata thing...
+            rotation = matplotlib.transforms.Affine2D().rotate_deg_around(xf, yf, ra) + td 
             r = patches.Rectangle((xs, ys), rw, rh, edgecolor = 'blue', facecolor = 'none', alpha = 0.2, lw = 1)
             r.set_transform(rotation)
             im = Image.open(directory + 'enhanced/' + filename)
+            # flip vertically as the y-axis grows the opposite way in images and on the plot
+            im = im.transpose(Image.FLIP_TOP_BOTTOM)
             iw, ih = im.size
             assert iw == resolution[True][0] and ih == resolution[True][1]
             xu = iw / rw
             yu = ih / rh
             # right size, right position, rotation
-            it = matplotlib.transforms.Affine2D().scale(1 / xu, 1 / yu).translate(xs, ys).rotate_deg_around(xf, yf, a) +  td
-            ax.imshow(im, transform = it, alpha = 0.6)
+            it = matplotlib.transforms.Affine2D().scale(1 / xu, 1 / yu).translate(xs, ys).rotate_deg_around(xf, yf, ra) + td
+            # if 'IMG_170725_191755' in filename:
+            ax.imshow(im, transform = it, alpha = 1.0) # change to lower when the orientation is right
             if DRAW_FRAME_BORDER:
                 ax.add_patch(r)
             if SAVE_STAGES:
                 ax.ticklabel_format(useOffset = False)
                 # overwrite after each new frame has been added                
                 plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 300)
-                print(filename)
-                quit()
+                #if 'IMG_170725_191755' in filename:
+                #    quit()
             if overview:
                 print('Cell-level computations suppressed')
                 continue
