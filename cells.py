@@ -41,8 +41,8 @@ rcParams['figure.figsize'] = 12, 8
 
 ### ADJUSTABLE PARAMETERS ###
 goal = 100 # how many cells in terms of latitude 
-threshold = 20 # discarding of grayish tones (30 is good)
-content = 0.3 # skip cell where too many of the pixels were discarded
+threshold = 20 # discarding of grayish tones 
+content = 0.5 # skip cell where too many of the pixels were discarded (0.3 is too severe)
 
 # https://rechneronline.de/earth-radius/#:~:text=Earth%20radius%20at%20sea%20level,(3958.756%20mi)%20on%20average.
 # using latitude 24.2091 and altitude 2230 m (de los metadatos)
@@ -58,20 +58,20 @@ modern = False #  images taken with an old firmware
 
 # output control flags
 kinds = [1, 2, 3] 
-overwrite = True # overwrite all output
+overwrite = False # overwrite all output
 verbose = False # print additional debug info
 SAVE = set() # which cells to save (kind, row, column)
 RAW = False # save the raw cell (tons of times)
 ALTITUDE = False # print altitude from metadata
 SHOW_MASK = False # show filtering mask (tons of times)
 INDIVIDUAL = True # save graphs of individual frames (needed for contract.py)
-DRAW_CELLS = False # draw each cell border on the overview plot
-DRAW_CELL_CENTER = False # draw each cell center
+DRAW_CELLS = True # draw each cell border on the overview plot
+DRAW_CELL_CENTER = True # draw each cell center
 DRAW_FRAME_CENTER = True
 DRAW_FRAME_BORDER = True
-SAVE_STAGES = True
+SAVE_STAGES = False
 histos = False # output altitude and angle data to stdout
-overview = True # no cell-level computations
+overview = False # no cell-level computations
 
 def crop(filename, polygon, mask = None):
     # https://stackoverflow.com/questions/22588074/polygon-crop-clip-using-python-pil
@@ -116,6 +116,8 @@ def crop(filename, polygon, mask = None):
                     cell.putpixel((col, row), (0, 0, 0, 0)) # transparent black
                     skip += 1
         if skip / total > content:
+            if verbose: 
+                print('SKIPPING', skip / total, 'is above', content)
             return None
     else:
         if SHOW_MASK:
@@ -213,6 +215,9 @@ def extract(frame, decimal = True):
     roll = float(info['Camera:Roll'][0]) # in degrees, side rotation
     if fabs(pitch) > planar or fabs(roll) > planar: # discard if not close to "flat"
         return None, None, None, None, None
+    orient = int(info['tiff:Orientation'][0])
+    assert orient == 3 # Rotate 180 is what we expect
+    yaw -= 180
     ru = info['exif:FocalPlaneResolutionUnit'][0]
     resUnit = FocalPlaneResolutionUnit.get(ru, None)
     assert resUnit is not None # it needs to be 2, 3, or 4
@@ -539,7 +544,7 @@ for dataset in datasets:
             (xc, yc, up) = positions[c]
             p = shape(xc, yc, kind, up)
             zones[c] = p
-            polygon = patches.Polygon(p, edgecolor = 'green', facecolor = 'none', alpha = 0.6, lw = 1)
+            polygon = patches.Polygon(p, edgecolor = 'green', facecolor = 'none', alpha = 0.8, lw = 1)
             if DRAW_CELLS:
                 ax.add_patch(polygon)
         print(f'Polygons of kind {kind} computed for {dataset}')
@@ -553,15 +558,12 @@ for dataset in datasets:
             Gf = nx.Graph()
             wm, hm, lonC, latC, a = frameRGB[filename]
             if DRAW_FRAME_CENTER:
-                ax.scatter(lonC, latC, marker = 'o', color = 'black', alpha = 0.6) # centers of the frames
+                ax.scatter(lonC, latC, marker = 'o', color = 'black', alpha = 0.7) # centers of the frames
             xs, ys, rw, rh = rectangle(wm, hm, lonC, latC)
             (xf, yf) = centers[filename]
-            ra = a + 90 # west is zero, north is no rotation, based on drone tests,
-            # but in reality we need to add 90 degrees instead of subtracting them,
-            # based on image composition tests, so something rotates the image at some point
-            # maybe a metadata thing...
+            ra = a - 90 # west is zero, north is no rotation, based on drone tests,
             rotation = matplotlib.transforms.Affine2D().rotate_deg_around(xf, yf, ra) + td 
-            r = patches.Rectangle((xs, ys), rw, rh, edgecolor = 'blue', facecolor = 'none', alpha = 0.2, lw = 1)
+            r = patches.Rectangle((xs, ys), rw, rh, edgecolor = 'blue', facecolor = 'none', alpha = 0.6, lw = 1)
             r.set_transform(rotation)
             im = Image.open(directory + 'enhanced/' + filename)
             # flip vertically as the y-axis grows the opposite way in images and on the plot
@@ -572,16 +574,13 @@ for dataset in datasets:
             yu = ih / rh
             # right size, right position, rotation
             it = matplotlib.transforms.Affine2D().scale(1 / xu, 1 / yu).translate(xs, ys).rotate_deg_around(xf, yf, ra) + td
-            # if 'IMG_170725_191755' in filename:
-            ax.imshow(im, transform = it, alpha = 1.0) # change to lower when the orientation is right
+            ax.imshow(im, transform = it, alpha = 0.5) 
             if DRAW_FRAME_BORDER:
                 ax.add_patch(r)
             if SAVE_STAGES:
                 ax.ticklabel_format(useOffset = False)
                 # overwrite after each new frame has been added                
                 plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 300)
-                #if 'IMG_170725_191755' in filename:
-                #    quit()
             if overview:
                 print('Cell-level computations suppressed')
                 continue
@@ -594,6 +593,7 @@ for dataset in datasets:
                 if None not in coords.values(): # whole cell for all channels
                     cell = crop(directory + 'enhanced/' + filename, coords[True])
                     if cell is None: # it was too gray
+                        print(f'Cell at {coords[True]} too gray', file = log)
                         skipped += 1
                     else: # there is content to process
                         contents = { 'RGB': cell }
@@ -624,8 +624,11 @@ for dataset in datasets:
                         if INDIVIDUAL:
                             Gf.add_edge(n1, n2)
             if INDIVIDUAL:
-                store(Gf, target)
-                print(f'Graph exported for {filename} of {dataset}')
+                if Gf.order() > 0:
+                    store(Gf, target)
+                    print(f'Graph exported for {filename} of {dataset}')
+                else:
+                    print(f'{filename} of {dataset} produced no valid vertices')                    
         ax.ticklabel_format(useOffset=False)
         plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 300) # the overview visualization
         plt.clf()
