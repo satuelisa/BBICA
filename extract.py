@@ -14,7 +14,7 @@ def crop(filename, coords):
     return Image.fromarray(newImArray, 'RGBA')
 
 if __name__ == '__main__':
-    directory = '/Users/elisa/Dropbox/Research/Topics/Arboles/CA/RAW/aug27b/images/'
+    directory = '/Volumes/dropbox/Dropbox/Research/Topics/Arboles/CA/RAW/aug27b/images/'
     test = 'IMG_170827_150122_0087_RGB.JPG'
     cell = [(20, 20), (180, 40), (220, 300), (70, 400)]
     extracted = crop(directory + test, cell)

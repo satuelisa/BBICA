@@ -419,7 +419,8 @@ for dataset in datasets:
     if osys == 'Linux':
         directory = '/home' + directory
     elif osys == 'Darwin' :
-        directory = '/Users' + directory
+        directory = '/Volumes/' + directory.replace('elisa', 'dropbox')
+#        directory = '/Users' + directory
     else:
         print('Unsupported operating system')
         quit()
@@ -626,9 +627,9 @@ for dataset in datasets:
             if INDIVIDUAL:
                 if Gf.order() > 0:
                     store(Gf, target)
-                    print(f'Graph exported for {filename} of {dataset}')
+                    print(f'Graph exported for {filename} of {dataset}', file = log)
                 else:
-                    print(f'{filename} of {dataset} produced no valid vertices')                    
+                    print(f'{filename} of {dataset} produced no valid vertices', file = log)                    
         ax.ticklabel_format(useOffset=False)
         plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 300) # the overview visualization
         plt.clf()

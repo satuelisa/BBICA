@@ -1,5 +1,5 @@
 #!/bin/zsh
-loc="/Users/elisa/Dropbox/Research/Topics/Arboles/CA/RAW/aug25b/images" # already done for jul25b
+loc="/Volumes/dropbox/Dropbox/Research/Topics/Arboles/CA/RAW/aug27b/images" # already done for jul25b
 for file in `ls -1 ${loc}/*.JPG`; do
     frame=`basename $file .JPG`
     echo Enhancing $frame

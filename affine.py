@@ -3,7 +3,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from matplotlib import transforms
 
-filename = '/Users/elisa/Dropbox/Research/Topics/Arboles/CA/RAW/jul25b/images/enhanced/IMG_170725_192210_0156_RGB.png'
+filename = '/Volumes/dropbox/Dropbox/Research/Topics/Arboles/CA/RAW/jul25b/images/enhanced/IMG_170725_192210_0156_RGB.png'
 #img = plt.imread(filename)
 img = Image.open(filename)
 w, h = img.size
