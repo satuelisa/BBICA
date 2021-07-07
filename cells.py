@@ -446,7 +446,7 @@ for dataset in datasets:
     print('Processing', dataset)
     pos = list(centers.values())
     fc = len(pos)
-    assert fc >= 30 # at least thirty meaningful frames
+    assert fc >= 20 # at least this many meaningful frames
     print(f'Combining information from {fc} frames')
     x = [c[0] for c in pos] 
     y = [c[1] for c in pos]
@@ -512,8 +512,10 @@ for dataset in datasets:
     store(Gg, f'{dataset}.json')
     Gg = load(f'{dataset}.json')    
     pos = nx.get_node_attributes(Gg, 'pos')
-#    norm = matplotlib.colors.Normalize(vmin = 0.0, vmax = 3.0) # https://stackoverflow.com/questions/28752727/map-values-to-colors-in-matplotlib
-#    mapper = plt.cm.ScalarMappable(norm = norm, cmap = plt.cm.RdYlGn) # https://www.neonscience.org/calc-ndvi-tiles-py
+#    norm = matplotlib.colors.Normalize(vmin = 0.0, vmax = 3.0)
+# https://stackoverflow.com/questions/28752727/map-values-to-colors-in-matplotlib
+#    mapper = plt.cm.ScalarMappable(norm = norm, cmap = plt.cm.RdYlGn)
+# https://www.neonscience.org/calc-ndvi-tiles-py
 #    nx.draw_networkx_nodes(Gg, pos, node_size = 12, node_shape='o', cmap = plt.cm.RdYlGn, linewidths = None, edgecolors = 'black')
     nx.draw_networkx_nodes(Gg, pos, node_size = 12, node_shape='o', linewidths = None, edgecolors = 'black') 
     nx.draw_networkx_edges(Gg, pos, width = 1, edge_color = 'black')
@@ -628,6 +630,7 @@ for dataset in datasets:
                 if Gf.order() > 0:
                     store(Gf, target)
                     print(f'Graph exported for {filename} of {dataset}', file = log)
+                    print(f'{filename} of {dataset} done')
                 else:
                     print(f'{filename} of {dataset} produced no valid vertices', file = log)                    
         ax.ticklabel_format(useOffset=False)

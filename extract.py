@@ -14,7 +14,17 @@ def crop(filename, coords):
     return Image.fromarray(newImArray, 'RGBA')
 
 if __name__ == '__main__':
-    directory = '/Volumes/dropbox/Dropbox/Research/Topics/Arboles/CA/RAW/aug27b/images/'
+    dataset = 'jul25b'
+    directory = r'/elisa/Dropbox/Research/Topics/Arboles/CA/RAW/' + dataset + '/images/'
+    osys = platform.system()
+    if osys == 'Linux':
+        directory = '/home' + directory
+    elif osys == 'Darwin' :
+        directory = '/Volumes/' + directory.replace('elisa', 'dropbox')
+#        directory = '/Users' + directory
+    else:
+        print('Unsupported operating system')
+        quit()
     test = 'IMG_170827_150122_0087_RGB.JPG'
     cell = [(20, 20), (180, 40), (220, 300), (70, 400)]
     extracted = crop(directory + test, cell)
