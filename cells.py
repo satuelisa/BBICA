@@ -41,8 +41,12 @@ rcParams['figure.figsize'] = 12, 8
 
 ### ADJUSTABLE PARAMETERS ###
 goal = 100 # how many cells in terms of latitude 
-threshold = 20 # discarding of grayish tones 
-content = 0.5 # skip cell where too many of the pixels were discarded (0.3 is too severe)
+
+# we used 20 for the squares (kind 1) originally
+threshold = 25 # discarding of grayish tones 
+
+# we used 0.5 for the squares (kind 1) originally
+content = 0.6 # skip cell where too many of the pixels were discarded (0.3 is too severe)
 
 # https://rechneronline.de/earth-radius/#:~:text=Earth%20radius%20at%20sea%20level,(3958.756%20mi)%20on%20average.
 # using latitude 24.2091 and altitude 2230 m (de los metadatos)
