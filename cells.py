@@ -40,7 +40,7 @@ from local import datasets, bbox, zone, channels
 rcParams['figure.figsize'] = 12, 8
 
 ### ADJUSTABLE PARAMETERS ###
-goal = 100 # how many cells in terms of latitude 
+goal = 150 # how many cells in terms of latitude (with 100, there are too few complete-neighborhood hexagons and it makes ML difficult)
 
 # we used 20 for the squares (kind 1) originally
 threshold = 25 # discarding of grayish tones 
