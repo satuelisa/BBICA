@@ -22,6 +22,18 @@ import struct
 import os.path
 import os
 
+def average(vectors):
+    n = len(vectors)
+    k = len(vectors[0]) 
+    result = [0] * k
+    for v in vectors:
+        for i in range(k):
+            result[i] += v[i]
+    return [ r / n for r in result ]
+
+def dec2rgb(color):
+    return [ c / 256 for c in color ]
+
 flightAltitude = 100 # meters, set on the drones
 FieldOfView =  65.5 # degrees, drone property
 fov = (2 * pi) * (FieldOfView /  360) # radians
@@ -40,7 +52,9 @@ from local import datasets, bbox, zone, channels
 rcParams['figure.figsize'] = 12, 8
 
 ### ADJUSTABLE PARAMETERS ###
-goal = 150 # how many cells in terms of latitude (with 100, there are too few complete-neighborhood hexagons and it makes ML difficult)
+goal = 10 # how many cells in terms of latitude
+# with 100, there are too few complete-neighborhood hexagons and it makes ML difficult
+# with 150, this is notably slower
 
 # we used 20 for the squares (kind 1) originally
 threshold = 25 # discarding of grayish tones 
@@ -68,7 +82,7 @@ SAVE = set() # which cells to save (kind, row, column)
 RAW = False # save the raw cell (tons of times)
 ALTITUDE = False # print altitude from metadata
 SHOW_MASK = False # show filtering mask (tons of times)
-INDIVIDUAL = True # save graphs of individual frames (needed for contract.py)
+INDIVIDUAL = False # save graphs of individual frames (needed for contract.py)
 DRAW_CELLS = True # draw each cell border on the overview plot
 DRAW_CELL_CENTER = True # draw each cell center
 DRAW_FRAME_CENTER = True
@@ -547,14 +561,12 @@ for dataset in datasets:
         ax.set_xlabel('Longitude')
         ax.set_ylabel('Latitude')
         zones = dict()
+        colors = defaultdict(list)
         for c in positions:
             (xc, yc, up) = positions[c]
             p = shape(xc, yc, kind, up)
             zones[c] = p
-            polygon = patches.Polygon(p, edgecolor = 'green', facecolor = 'none', alpha = 0.8, lw = 1)
-            if DRAW_CELLS:
-                ax.add_patch(polygon)
-        print(f'Polygons of kind {kind} computed for {dataset}')
+        print(f'{len(positions)} cells of kind {kind} computed for {dataset}')
         td = ax.transData # https://stackoverflow.com/questions/4285103/matplotlib-rotating-a-patch
         for filename in frameRGB:
             if INDIVIDUAL:
@@ -562,6 +574,7 @@ for dataset in datasets:
                 if not overwrite and path.exists(target):
                     print(f'A graph of type {kind} for {filename} of {dataset} already exists')
                     continue # no need to reprocess (delete this for a full wipe)
+            print(f'Processing {filename}')
             Gf = nx.Graph()
             wm, hm, lonC, latC, a = frameRGB[filename]
             if DRAW_FRAME_CENTER:
@@ -592,6 +605,7 @@ for dataset in datasets:
                 print('Cell-level computations suppressed')
                 continue
             skipped = 0
+            print('Determining cell contents')
             for c in positions:
                 (row, column) = c
                 p = zones[c]
@@ -603,6 +617,7 @@ for dataset in datasets:
                         print(f'Cell at {coords[True]} too gray', file = log)
                         skipped += 1
                     else: # there is content to process
+                        print(f'Cell at ({row}, {column}) is significant')
                         contents = { 'RGB': cell }
                         ntg = mask(contents['RGB']) # a mask to filter the not-too-gray positions
                         if SHOW_MASK:
@@ -612,9 +627,12 @@ for dataset in datasets:
                             contents[ch] = crop(directory + filename.replace('RGB.png', f'{ch}.TIF'), coords[False], mask = ntg)
                         v = combine(contents)
                         (xc, yc, up) = positions[c]
+                        cellcolor = v[:3]
+                        otherchannels = v[3:]
+                        colors[c].append(v)
                         if INDIVIDUAL:
-                            Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v[:3], value = v[3:])
-                        G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = v[:3], value = v[3:])                    
+                            Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = cellcolor, value = otherchannels)
+                        G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = cellcolor, value = otherchannels)                    
                         values[c] = v
                         if (kind, row, column) in SAVE:
                             for ch in contents:
@@ -636,7 +654,18 @@ for dataset in datasets:
                     print(f'Graph exported for {filename} of {dataset}', file = log)
                     print(f'{filename} of {dataset} done')
                 else:
-                    print(f'{filename} of {dataset} produced no valid vertices', file = log)                    
+                    print(f'{filename} of {dataset} produced no valid vertices', file = log)
+            if DRAW_CELLS:                    
+                for c in positions:
+                    p = zones[c]
+                    contents = colors[c]
+                    if len(contents) > 0: # use the average
+                        color = dec2rgb(average(contents)[:3]) # first three channels only
+                        polygon = patches.Polygon(p, edgecolor = 'cyan', facecolor = color, alpha = 0.4, lw = 1)
+                        ax.add_patch(polygon)
+                    else: # not filled, none of the cells had contents
+                        polygon = patches.Polygon(p, edgecolor = 'cyan', facecolor = 'none', alpha = 0.8, lw = 1)
+                        ax.add_patch(polygon)                        
         ax.ticklabel_format(useOffset=False)
         plt.savefig(f'{dataset}_cells_{kind}.png',  bbox_inches = "tight", dpi = 300) # the overview visualization
         plt.clf()
