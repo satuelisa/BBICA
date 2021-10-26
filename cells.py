@@ -48,19 +48,22 @@ from libxmp.utils import file_to_dict
 
 # local files
 from extract import crop
-from local import datasets, bbox, zone, channels
+from local import datasets, bbox, zone, channels, shapes
 rcParams['figure.figsize'] = 12, 8
 
 ### ADJUSTABLE PARAMETERS ###
-goal = 10 # how many cells in terms of latitude
+goal = 70 # how many cells in terms of latitude
 # with 100, there are too few complete-neighborhood hexagons and it makes ML difficult
 # with 150, this is notably slower
 
+threshold = 10 # discarding of grayish tones 
 # we used 20 for the squares (kind 1) originally
-threshold = 25 # discarding of grayish tones 
+# ran the whole thing with 25 but the ML was not impressive
 
+content = 0.4 # skip cell where this proportion of the pixels were discarded as gray
 # we used 0.5 for the squares (kind 1) originally
-content = 0.6 # skip cell where too many of the pixels were discarded (0.3 is too severe)
+# (0.3 is too severe)
+# (0.6 did not yield good results)
 
 # https://rechneronline.de/earth-radius/#:~:text=Earth%20radius%20at%20sea%20level,(3958.756%20mi)%20on%20average.
 # using latitude 24.2091 and altitude 2230 m (de los metadatos)
@@ -75,14 +78,13 @@ resolution = {True: (4608, 3456), False: (1280, 960)} # sensor specs (True for R
 modern = False #  images taken with an old firmware
 
 # output control flags
-kinds = [1, 2, 3] 
-overwrite = False # overwrite all output
+overwrite = True # overwrite all output
 verbose = False # print additional debug info
 SAVE = set() # which cells to save (kind, row, column)
 RAW = False # save the raw cell (tons of times)
 ALTITUDE = False # print altitude from metadata
 SHOW_MASK = False # show filtering mask (tons of times)
-INDIVIDUAL = False # save graphs of individual frames (needed for contract.py)
+INDIVIDUAL = True # save graphs of individual frames (needed for contract.py)
 DRAW_CELLS = True # draw each cell border on the overview plot
 DRAW_CELL_CENTER = True # draw each cell center
 DRAW_FRAME_CENTER = True
@@ -542,7 +544,7 @@ for dataset in datasets:
     plt.ylim(bbox[1])
     plt.savefig(f'{dataset}_graph.png', bbox_inches = "tight", dpi = 150)
     plt.clf()
-    for kind in kinds:
+    for kind in shapes:
         print(f'Extracting type {kind} cells for {dataset}')        
         positions, neighborhoods = grid(kind)
         cx = [v[0] for v in positions.values()]
