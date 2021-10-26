@@ -52,8 +52,8 @@ from local import datasets, bbox, zone, channels, shapes
 rcParams['figure.figsize'] = 12, 8
 
 ### ADJUSTABLE PARAMETERS ###
-goal = 70 # how many cells in terms of latitude
-# with 100, there are too few complete-neighborhood hexagons and it makes ML difficult
+goal = 120 # how many cells in terms of latitude
+# with 100, there are too few complete-neighborhood hexagons which makes ML difficult
 # with 150, this is notably slower
 
 threshold = 10 # discarding of grayish tones 
@@ -448,8 +448,11 @@ for dataset in datasets:
     frameRGB = dict()
     for filename in os.listdir(directory + '/enhanced'):
         if filename.endswith('_RGB.png'):
+            # process only if all channels are present
             if path.exists(directory + filename.replace('RGB.png', 'NIR.TIF')) \
-               and path.exists(directory + filename.replace('RGB.png', 'RED.TIF')):
+               and path.exists(directory + filename.replace('RGB.png', 'RED.TIF')) \
+               and path.exists(directory + filename.replace('RGB.png', 'GRE.TIF')) \
+               and path.exists(directory + filename.replace('RGB.png', 'REG.TIF')):
                 lonC, latC, wm, hm, yaw = extract(directory + filename[:-8])
                 if lonC is None:
                     continue # do NOT process frames from initial flight altitudes
@@ -607,6 +610,7 @@ for dataset in datasets:
                 print('Cell-level computations suppressed')
                 continue
             skipped = 0
+            content = 0
             print('Determining cell contents')
             for c in positions:
                 (row, column) = c
@@ -619,7 +623,9 @@ for dataset in datasets:
                         print(f'Cell at {coords[True]} too gray', file = log)
                         skipped += 1
                     else: # there is content to process
-                        print(f'Cell at ({row}, {column}) is significant')
+                        if verbose:
+                            print(f'Cell at ({row}, {column}) is significant')
+                            content += 1
                         contents = { 'RGB': cell }
                         ntg = mask(contents['RGB']) # a mask to filter the not-too-gray positions
                         if SHOW_MASK:
@@ -632,13 +638,21 @@ for dataset in datasets:
                         cellcolor = v[:3]
                         otherchannels = v[3:]
                         colors[c].append(v)
+                        redRGB = cellcolor[0]
+                        greenRGB = cellcolor[1]
+                        NIR = otherchannels[0]
+                        RED = otherchannels[1]
+                        differences = [ greenRGB - redRGB, NIR - RED ]
                         if INDIVIDUAL:
-                            Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = cellcolor, value = otherchannels)
-                        G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}', pos = (xc, yc), color = cellcolor, value = otherchannels)                    
+                            Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}',
+                                        pos = (xc, yc), color = cellcolor, value = otherchannels, state = differences)
+                        G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}',
+                                   pos = (xc, yc), color = cellcolor, value = otherchannels, state = differences)                    
                         values[c] = v
                         if (kind, row, column) in SAVE:
                             for ch in contents:
                                 contents[ch].save(f'{dataset}_{filename[:-8]}_{ch}_{kind}_{row}_{column}.png')
+            print(f'Encountered {content} significant cells of kind {kind}', file = log)
             print(f'Skipped {skipped} incomplete cells of kind {kind}', file = log)
             for c in neighborhoods:
                 (r1, c1) = c

@@ -4,7 +4,7 @@ import networkx as nx
 from sys import argv
 
 tooMany = 100 # surpress the labels for large graphs
-plt.rcParams['figure.figsize'] = 40, 30
+plt.rcParams['figure.figsize'] = 40, 40
 verbose = False # print out the edge list
 filename = argv[1]
 print('Loading graph data from', filename)
@@ -13,7 +13,6 @@ rgb = nx.get_node_attributes(G, 'color')
 color= [ '#%02x%02x%02x' % (int(rgb[c][0]),
                             int(rgb[c][1]),
                             int(rgb[c][2])) for c in rgb ] 
-print(color)
 channels = nx.get_node_attributes(G, 'value')
 pos = nx.get_node_attributes(G, 'pos')
 print('Drawing nodes...')

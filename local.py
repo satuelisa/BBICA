@@ -1,7 +1,7 @@
 datasets = ['jul25b', 'aug27b']
-datasets = datasets[::-1] # invert order to do august first
-shapes = [ 1 ] # [ 1, 2, 3 ] # squares triangles hexagons
-channels = ['NIR', 'RED', 'REG', 'GRE'] # the multi- spectral TIF images 
+# datasets = datasets[::-1] # invert order to do august first
+shapes = [ 1, 2, 3 ] # squares triangles hexagons
+channels = ['NIR', 'RED', 'REG', 'GRE'] # the multi-spectral TIF images 
 bb = [[-99.90024722222223, -99.89772500000001],
         [24.20827222222222, 24.21]] # lon, lat (bb.py from BarkBeetle)
 margin = 0.001
