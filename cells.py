@@ -52,15 +52,12 @@ from local import datasets, bbox, zone, channels, shapes
 rcParams['figure.figsize'] = 12, 8
 
 ### ADJUSTABLE PARAMETERS ###
-goal = 120 # how many cells in terms of latitude
-# with 100, there are too few complete-neighborhood hexagons which makes ML difficult
-# with 150, this is notably slower
-
-threshold = 10 # discarding of grayish tones 
+goal = 60
+MINCELLS = 30 # how many cells must have content for frame to be included
+threshold = 20 # discarding of grayish tones 
 # we used 20 for the squares (kind 1) originally
 # ran the whole thing with 25 but the ML was not impressive
-
-content = 0.4 # skip cell where this proportion of the pixels were discarded as gray
+contentProp = 0.6 # skip cell where this proportion of the pixels were discarded as gray
 # we used 0.5 for the squares (kind 1) originally
 # (0.3 is too severe)
 # (0.6 did not yield good results)
@@ -78,8 +75,8 @@ resolution = {True: (4608, 3456), False: (1280, 960)} # sensor specs (True for R
 modern = False #  images taken with an old firmware
 
 # output control flags
-overwrite = True # overwrite all output
-verbose = False # print additional debug info
+overwrite = False # overwrite all output
+verbose = True # print additional debug info
 SAVE = set() # which cells to save (kind, row, column)
 RAW = False # save the raw cell (tons of times)
 ALTITUDE = False # print altitude from metadata
@@ -90,8 +87,8 @@ DRAW_CELL_CENTER = True # draw each cell center
 DRAW_FRAME_CENTER = True
 DRAW_FRAME_BORDER = True
 SAVE_STAGES = False
-histos = False # output altitude and angle data to stdout
-overview = False # no cell-level computations
+histos = False # output altitude and angle data to stdout if True
+overview = False # no cell-level computations if True
 
 def crop(filename, polygon, mask = None):
     # https://stackoverflow.com/questions/22588074/polygon-crop-clip-using-python-pil
@@ -135,9 +132,9 @@ def crop(filename, polygon, mask = None):
                 if max(r, g, b) - min(r, g, b) <= threshold: # too gray
                     cell.putpixel((col, row), (0, 0, 0, 0)) # transparent black
                     skip += 1
-        if skip / total > content:
+        if skip / total > contentProp:
             if verbose: 
-                print('SKIPPING', skip / total, 'is above', content)
+                print('SKIPPING', skip / total, 'is above', contentProp)
             return None
     else:
         if SHOW_MASK:
@@ -579,7 +576,7 @@ for dataset in datasets:
                 if not overwrite and path.exists(target):
                     print(f'A graph of type {kind} for {filename} of {dataset} already exists')
                     continue # no need to reprocess (delete this for a full wipe)
-            print(f'Processing {filename}')
+            print(f'Processing {filename} to store the result at {target}')
             Gf = nx.Graph()
             wm, hm, lonC, latC, a = frameRGB[filename]
             if DRAW_FRAME_CENTER:
@@ -621,11 +618,14 @@ for dataset in datasets:
                     cell = crop(directory + 'enhanced/' + filename, coords[True])
                     if cell is None: # it was too gray
                         print(f'Cell at {coords[True]} too gray', file = log)
+                        if verbose:
+                            print('-', end='')
                         skipped += 1
                     else: # there is content to process
+                        print(f'Cell at ({row}, {column}) is significant', file = log)
+                        content += 1
                         if verbose:
-                            print(f'Cell at ({row}, {column}) is significant')
-                            content += 1
+                            print('+', end='')                        
                         contents = { 'RGB': cell }
                         ntg = mask(contents['RGB']) # a mask to filter the not-too-gray positions
                         if SHOW_MASK:
@@ -647,12 +647,18 @@ for dataset in datasets:
                             Gf.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}',
                                         pos = (xc, yc), color = cellcolor, value = otherchannels, state = differences)
                         G.add_node(f'{dataset}_{filename}_{kind}_{row}_{column}',
-                                   pos = (xc, yc), color = cellcolor, value = otherchannels, state = differences)                    
+                                   pos = (xc, yc), color = cellcolor, value = otherchannels, state = differences)
                         values[c] = v
                         if (kind, row, column) in SAVE:
                             for ch in contents:
                                 contents[ch].save(f'{dataset}_{filename[:-8]}_{ch}_{kind}_{row}_{column}.png')
+            if verbose:
+                print('Done processing')
             print(f'Encountered {content} significant cells of kind {kind}', file = log)
+            if content < MINCELLS:                
+                print(f'Too few significant cells: {content} / {MINCELLS}, skipping the frame')
+                continue
+            print(f'Encountered {content} significant cells of kind {kind}')            
             print(f'Skipped {skipped} incomplete cells of kind {kind}', file = log)
             for c in neighborhoods:
                 (r1, c1) = c
